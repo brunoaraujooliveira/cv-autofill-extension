@@ -3,6 +3,7 @@ import { useContext, useEffect, useMemo, useState } from 'preact/hooks';
 import { createTranslator, resolveLocale, type Locale, type Translate } from '../shared/i18n';
 import type { SettingsView } from '../shared/settings';
 import { onNotification, request } from './api';
+import { errorMessage } from '../shared/text';
 
 interface AppContextValue {
   settings: SettingsView;
@@ -21,7 +22,7 @@ export function AppProvider({ children }: { children: ComponentChildren }) {
     request('settings/get', undefined)
       .then(setSettings)
       .catch((error: unknown) => {
-        setLoadError(error instanceof Error ? error.message : String(error));
+        setLoadError(errorMessage(error));
       });
     return onNotification((notification) => {
       if (notification.type === 'settings/changed') setSettings(notification.settings);

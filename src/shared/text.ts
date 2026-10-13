@@ -42,3 +42,12 @@ export function isFormatHint(text: string): boolean {
   const looksLikeMask = /\d/.test(text) || /(dd|mm|yy|aa|jj|hh|ss|xx)/i.test(text);
   return onlyMaskLetters && looksLikeMask;
 }
+
+/** A label that says what is asked, so the same question can be recognised on another form. */
+export function isNamingLabel(label: string): boolean {
+  return label.trim() !== '' && !isFormatHint(label);
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

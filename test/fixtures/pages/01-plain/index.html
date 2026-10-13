@@ -66,6 +66,9 @@
         <label for="trap">Leave this empty</label>
         <input id="trap" name="trap" />
       </div>
+      <!-- Fields a person cannot see must never be filled, however they are labelled. -->
+      <input name="transparent" aria-label="Phone" style="opacity: 0; position: absolute" />
+      <input name="offscreen" aria-label="Email" style="position: absolute; left: -9999px" />
       <input type="hidden" name="csrf" value="token-123" />
 
       <p><button type="submit">Submit application</button></p>

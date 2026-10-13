@@ -1,10 +1,15 @@
 import type { MessageKey, Translate } from '../../shared/i18n';
-import type { FieldDecision, FieldSchema, FillResult, RunState } from '../../shared/types';
+import type {
+  FieldDecision,
+  FieldSchema,
+  FieldValue,
+  FillResult,
+  RunState,
+} from '../../shared/types';
 import { useApp } from '../../ui/app-context';
 import { AnswerForm } from './AnswerForm';
 
 type RowStatus = FillResult['status'] | 'ask_user' | 'skip';
-type AnswerValue = NonNullable<FieldDecision['value']>;
 
 export interface FieldRow {
   field: FieldSchema;
@@ -51,7 +56,7 @@ function formatValue(value: FieldDecision['value'], t: Translate): string {
 interface FieldItemProps {
   row: FieldRow;
   canAnswer: boolean;
-  onAnswer: (fieldId: string, value: AnswerValue) => void;
+  onAnswer: (fieldId: string, value: FieldValue) => void;
 }
 
 function FieldItem({ row, canAnswer, onAnswer }: FieldItemProps) {
@@ -100,7 +105,7 @@ function FieldItem({ row, canAnswer, onAnswer }: FieldItemProps) {
 interface FieldListProps {
   rows: readonly FieldRow[];
   canAnswer: boolean;
-  onAnswer: (fieldId: string, value: AnswerValue) => void;
+  onAnswer: (fieldId: string, value: FieldValue) => void;
 }
 
 export function FieldList({ rows, canAnswer, onAnswer }: FieldListProps) {

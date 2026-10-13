@@ -166,6 +166,26 @@ describe('fillFields', () => {
     expect(events).toEqual(['input', 'change']);
   });
 
+  it('stops before the next field once asked to', async () => {
+    render('<input aria-label="A" /><input aria-label="B" /><input aria-label="C" />');
+    const extracted = await extract();
+    const fields = new Map<string, ExtractedField>(extracted.map((f) => [f.schema.id, f]));
+    const decisions = extracted.map((f): FieldDecision => ({
+      fieldId: f.schema.id,
+      action: 'fill',
+      value: 'x',
+      confidence: 1,
+    }));
+    let filled = 0;
+    const results = await fillFields(fields, decisions, {
+      delayMs: 0,
+      shouldStop: () => filled++ >= 1,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(extracted.map((f) => (f.elements[0] as HTMLInputElement).value)).toEqual(['x', '', '']);
+  });
+
   it('only acts on fill decisions and waits between fields', async () => {
     render('<input aria-label="A" /><input aria-label="B" /><input aria-label="C" />');
     const extracted = await extract();

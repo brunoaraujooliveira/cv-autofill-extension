@@ -14,6 +14,7 @@ import { findStepTitle } from './navigator/step-id';
 import { waitForStepChange, type StepMarker } from './navigator/wait';
 import { addBlock } from './repeater';
 import { capturePage, type PageCapture } from './snapshot';
+import { errorMessage } from '../shared/text';
 
 const INSTALLED_FLAG = '__cvAutofillContentScript';
 
@@ -32,6 +33,8 @@ async function readMarker(): Promise<StepMarker> {
 function createHandlers(): Handlers {
   /** Latest capture; decisions and clicks refer to its fields and buttons. */
   let capture: PageCapture | null = null;
+  /** Set when the user stops the run; looked at between one field and the next. */
+  let stopRequested = false;
 
   return {
     'content/extract': async ({ frameId, settle }) => {
@@ -40,8 +43,19 @@ function createHandlers(): Handlers {
       return capture.snapshot;
     },
 
-    'content/fill': ({ decisions, delayMs, file }) =>
-      fillFields(capture?.fields ?? new Map(), decisions, { delayMs, ...(file ? { file } : {}) }),
+    'content/fill': ({ decisions, delayMs, file }) => {
+      stopRequested = false;
+      return fillFields(capture?.fields ?? new Map(), decisions, {
+        delayMs,
+        shouldStop: () => stopRequested,
+        ...(file ? { file } : {}),
+      });
+    },
+
+    'content/cancel': () => {
+      stopRequested = true;
+      return Promise.resolve(null);
+    },
 
     'content/advance': async ({ selector }) => {
       const button = capture?.buttons.get(selector);
@@ -56,7 +70,12 @@ function createHandlers(): Handlers {
 
     'content/add-block': async ({ selector }) => {
       const button = capture?.buttons.get(selector);
-      return button?.isConnected ? addBlock(button) : false;
+      // The page may have changed the button since it was read: check again before clicking.
+      const stillSafe =
+        button?.isConnected === true &&
+        !isButtonDisabled(button) &&
+        classifyButtonText(buttonText(button)) === 'other';
+      return stillSafe ? addBlock(button) : false;
     },
   };
 }
@@ -66,7 +85,7 @@ async function handle(handlers: Handlers, request: ContentRequest): Promise<Repl
     const handler = handlers[request.type] as (payload: unknown) => Promise<unknown>;
     return { ok: true, data: await handler(request.payload) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: errorMessage(error) };
   }
 }
 

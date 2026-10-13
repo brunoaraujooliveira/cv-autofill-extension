@@ -77,6 +77,8 @@ export interface FrameSnapshot {
   repeatables: RepeatableSection[];
   /** Origins of visible iframes embedded in this frame. */
   iframeOrigins: string[];
+  /** The page presents this as its last step (stepper position or a "review" title). */
+  looksFinal: boolean;
 }
 
 /** The current step of the form, merged across every frame the extension can read. */
@@ -89,6 +91,8 @@ export interface StepSchema {
   repeatables: RepeatableSection[];
   /** Origins of embedded frames the extension has no access to yet. */
   blockedOrigins: string[];
+  /** The page presents this as its last step: nothing here is clicked to move on. */
+  looksFinal: boolean;
 }
 
 export interface FieldDecision {
@@ -102,6 +106,9 @@ export interface FieldDecision {
   source?: string;
   origin?: 'llm' | 'cache' | 'user';
 }
+
+/** A value that can be put into a field. */
+export type FieldValue = NonNullable<FieldDecision['value']>;
 
 export interface FillResult {
   fieldId: string;
@@ -118,17 +125,20 @@ export interface UploadFile {
   base64: string;
 }
 
-export type RunPhase =
-  | 'IDLE'
-  | 'EXTRACTING'
-  | 'MAPPING'
-  | 'FILLING'
-  | 'VALIDATING'
-  | 'WAITING_USER_REVIEW'
-  | 'ADVANCING'
-  | 'FINAL_REVIEW'
-  | 'DONE'
-  | 'ERROR';
+export const RUN_PHASES = [
+  'IDLE',
+  'EXTRACTING',
+  'MAPPING',
+  'FILLING',
+  'VALIDATING',
+  'WAITING_USER_REVIEW',
+  'ADVANCING',
+  'FINAL_REVIEW',
+  'DONE',
+  'ERROR',
+] as const;
+
+export type RunPhase = (typeof RUN_PHASES)[number];
 
 export type RunErrorCode =
   | 'missing_api_key'
@@ -142,6 +152,7 @@ export type RunErrorCode =
   | 'llm_refusal'
   | 'llm_invalid_response'
   | 'llm_bad_request'
+  | 'interrupted'
   | 'unexpected';
 
 export interface RunError {
@@ -154,7 +165,10 @@ export type RunNotice =
   | { code: 'next_disabled'; missing: string[] }
   | { code: 'step_unchanged' }
   | { code: 'no_next_button' }
-  | { code: 'page_reloaded' };
+  | { code: 'page_reloaded' }
+  | { code: 'cancelled' }
+  | { code: 'auto_limit' }
+  | { code: 'review_new_fields' };
 
 export interface BlockShortfall {
   /** Text of the "Add" button. */

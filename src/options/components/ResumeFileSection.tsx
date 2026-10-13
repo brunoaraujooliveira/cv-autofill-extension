@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { FileMeta } from '../../shared/answers';
+import { MAX_FILE_BYTES, type FileMeta } from '../../shared/answers';
 import { request } from '../../ui/api';
 import { useApp } from '../../ui/app-context';
 import { errorDetail, StatusLine, type Status } from './StatusLine';
-
-const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 function toBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

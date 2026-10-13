@@ -61,12 +61,13 @@ function BlockedFrames({ run, onGranted }: { run: RunState; onGranted: () => voi
 
 export function RunView({ controller, canStart }: RunViewProps) {
   const { t } = useApp();
-  const { run, actionError, start, confirm, finish, answer } = controller;
+  const { run, actionError, start, confirm, finish, cancel, answer } = controller;
   const [jobDescription, setJobDescription] = useState('');
   const [copied, setCopied] = useState(false);
+  const [includeValues, setIncludeValues] = useState(false);
   const copyDiagnostics = () => {
     if (!run) return;
-    const text = buildDiagnostics(run, chrome.runtime.getManifest().version);
+    const text = buildDiagnostics(run, chrome.runtime.getManifest().version, { includeValues });
     navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -121,6 +122,11 @@ export function RunView({ controller, canStart }: RunViewProps) {
         {rows.length > 0 && !busy && <p class="hint">{t('run.summary', summarize(rows))}</p>}
 
         <div class="actions">
+          {busy && (
+            <button type="button" onClick={cancel}>
+              {t('run.stop')}
+            </button>
+          )}
           {phase === 'WAITING_USER_REVIEW' && (
             <button type="button" class="primary" disabled={idle} onClick={confirm}>
               {t('run.next')}
@@ -159,6 +165,17 @@ export function RunView({ controller, canStart }: RunViewProps) {
               {t('run.diagnostics')}
             </button>
             {copied && <span class="hint"> {t('run.diagnostics.copied')}</span>}
+            <label class="field field--inline diagnostics__values">
+              <input
+                type="checkbox"
+                checked={includeValues}
+                onChange={(event) => {
+                  setIncludeValues(event.currentTarget.checked);
+                  setCopied(false);
+                }}
+              />
+              {t('run.diagnostics.values')}
+            </label>
           </p>
         )}
 

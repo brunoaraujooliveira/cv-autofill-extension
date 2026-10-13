@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Orchestrator } from '../../../src/background/orchestrator';
 import { Router } from '../../../src/background/router';
 import { AnswerBank } from '../../../src/background/storage/answer-bank';
-import { InMemoryStore } from '../../../src/background/storage/key-value-store';
+import { InMemoryStore } from '../support/in-memory-store';
 import { MappingCache } from '../../../src/background/storage/mapping-cache';
 import { ResumeRepository } from '../../../src/background/storage/resume';
 import { ResumeFileRepository } from '../../../src/background/storage/resume-file';
@@ -34,6 +34,7 @@ describe('Router', () => {
     confirm: vi.fn<Orchestrator['confirm']>(),
     answer: vi.fn<Orchestrator['answer']>(),
     finish: vi.fn<Orchestrator['finish']>(),
+    cancel: vi.fn<Orchestrator['cancel']>(),
   };
   let answers: AnswerBank;
   let router: Router;
@@ -140,10 +141,28 @@ describe('Router', () => {
     await router.handle({ type: 'run/confirm', payload: { tabId: 7 } });
     await router.handle({ type: 'run/answer', payload: { tabId: 7, fieldId: 'f1', value: 'x' } });
     await router.handle({ type: 'run/finish', payload: { tabId: 7 } });
+    await router.handle({ type: 'run/cancel', payload: { tabId: 7 } });
+    expect(orchestrator.cancel).toHaveBeenCalledWith(7);
     expect(orchestrator.get).toHaveBeenCalledWith(7);
     expect(orchestrator.confirm).toHaveBeenCalledWith(7);
     expect(orchestrator.answer).toHaveBeenCalledWith(7, 'f1', 'x');
     expect(orchestrator.finish).toHaveBeenCalledWith(7);
+  });
+
+  it.each([
+    ['a tab id that is not a number', { type: 'run/start', payload: { tabId: 'seven' } }],
+    ['a missing payload', { type: 'run/confirm', payload: undefined }],
+    ['an answer for no field', { type: 'run/answer', payload: { tabId: 7, value: 'x' } }],
+    [
+      'an answer of the wrong kind',
+      { type: 'run/answer', payload: { tabId: 7, fieldId: 'f', value: 9 } },
+    ],
+    ['an empty stored answer', { type: 'answers/save', payload: { id: 'a1', answer: '  ' } }],
+    ['a cache clear without a site', { type: 'cache/clear', payload: {} }],
+  ])('refuses %s before any handler runs', async (_, request) => {
+    const reply = await router.handle(request as never);
+    expect(reply.ok).toBe(false);
+    for (const handler of Object.values(orchestrator)) expect(handler).not.toHaveBeenCalled();
   });
 
   it('turns failures into error replies', async () => {

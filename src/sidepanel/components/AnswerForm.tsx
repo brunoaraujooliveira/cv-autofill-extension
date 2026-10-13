@@ -1,13 +1,11 @@
 import { useState } from 'preact/hooks';
-import type { FieldDecision, FieldSchema } from '../../shared/types';
+import type { FieldSchema, FieldValue } from '../../shared/types';
 import { useApp } from '../../ui/app-context';
-
-type AnswerValue = NonNullable<FieldDecision['value']>;
 
 interface AnswerFormProps {
   field: FieldSchema;
   disabled: boolean;
-  onAnswer: (value: AnswerValue) => void;
+  onAnswer: (value: FieldValue) => void;
 }
 
 /** Lets the user answer, from the side panel, a field the extension could not fill by itself. */

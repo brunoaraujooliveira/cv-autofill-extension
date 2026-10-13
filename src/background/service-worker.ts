@@ -12,7 +12,11 @@ import { ResumeRepository } from './storage/resume';
 import { ResumeFileRepository } from './storage/resume-file';
 import { SettingsRepository } from './storage/settings';
 import { StateStore } from './storage/state-store';
-import { ChromeTabGateway } from './chrome-tab-gateway';
+import {
+  ChromeTabGateway,
+  keepServiceWorkerAwake,
+  revokeOptionalSiteAccess,
+} from './chrome-tab-gateway';
 
 const logger = createLogger('background');
 const store = new ChromeLocalStore();
@@ -50,6 +54,8 @@ const orchestrator = new Orchestrator({
   onChange: (state) => {
     notify({ type: 'run/changed', state });
   },
+  keepAwake: keepServiceWorkerAwake,
+  revokeSiteAccess: revokeOptionalSiteAccess,
 });
 
 const router = new Router({
@@ -101,8 +107,21 @@ chrome.runtime.onStartup.addListener(() => {
   states.detachTabs().catch(logFailure('Could not detach stored runs'));
 });
 
+// What is stored here (API key, resume, answers) is for the extension's own pages and worker.
+// Content scripts run next to web pages and get no access to it.
+chrome.storage.local
+  .setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+  .catch(logFailure('Could not restrict storage access'));
+
+const EXTENSION_ORIGIN = chrome.runtime.getURL('');
+
+/** Requests are served to the extension's own pages only, never to a script inside a web page. */
+function isFromExtensionPage(sender: chrome.runtime.MessageSender): boolean {
+  return sender.id === chrome.runtime.id && (sender.url?.startsWith(EXTENSION_ORIGIN) ?? false);
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id || !isRequest(message)) return false;
+  if (!isFromExtensionPage(sender) || !isRequest(message)) return false;
   void router.handle(message).then(sendResponse);
   return true;
 });

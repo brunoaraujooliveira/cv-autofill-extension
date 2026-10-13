@@ -34,9 +34,14 @@ export function waitForStepChange(
     const check = async () => {
       if (checking) return;
       checking = true;
-      const now = await readMarker();
-      checking = false;
-      if (now.url !== before.url || now.signature !== before.signature) finish(true);
+      try {
+        const now = await readMarker();
+        if (now.url !== before.url || now.signature !== before.signature) finish(true);
+      } catch {
+        // The page is mid-change; the next mutation triggers another look.
+      } finally {
+        checking = false;
+      }
     };
     const schedule = () => {
       clearTimeout(settleTimer);

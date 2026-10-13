@@ -1,4 +1,5 @@
-import type { RunState } from '../../shared/types';
+import { z } from 'zod';
+import { RUN_PHASES, type RunState } from '../../shared/types';
 import type { KeyValueStore } from './key-value-store';
 
 const STORAGE_KEY = 'runs';
@@ -8,15 +9,32 @@ export const NO_TAB = -1;
 
 type StoredRuns = Record<string, RunState>;
 
-/** Identifies an application by where it lives, so it can be found again after the tab closes. */
+/**
+ * Identifies an application by its address, so it can be found again after the tab closes.
+ * Query and fragment are part of it: many portals tell jobs apart only by a parameter.
+ */
 export function runKey(url: string): string {
   try {
-    const { hostname, pathname } = new URL(url);
-    return `${hostname}${pathname.replace(/\/+$/, '')}`;
+    const { hostname, pathname, search, hash } = new URL(url);
+    return `${hostname}${pathname.replace(/\/+$/, '')}${search}${hash}`;
   } catch {
     return url;
   }
 }
+
+/** The parts of a stored run the code relies on; anything else is carried along untouched. */
+const storedRunSchema = z.looseObject({
+  tabId: z.number(),
+  key: z.string(),
+  phase: z.enum(RUN_PHASES),
+  stepNumber: z.number(),
+  decisions: z.array(z.looseObject({ fieldId: z.string() })),
+  results: z.array(z.looseObject({ fieldId: z.string() })),
+  decided: z.record(z.string(), z.looseObject({ fieldId: z.string() })),
+  attempts: z.record(z.string(), z.number()),
+  added: z.record(z.string(), z.number()),
+  updatedAt: z.number(),
+});
 
 /** Persists runs so they survive reloads, a closed tab, or the service worker going to sleep. */
 export class StateStore {
@@ -70,12 +88,16 @@ export class StateStore {
     return next;
   }
 
+  /** Stored runs that are still recent and have the shape this version expects. */
   private async readFresh(): Promise<StoredRuns> {
     const stored = await this.store.get(STORAGE_KEY);
     if (typeof stored !== 'object' || stored === null) return {};
     const oldest = this.now() - MAX_AGE_MS;
-    return Object.fromEntries(
-      Object.entries(stored as StoredRuns).filter(([, run]) => run.updatedAt >= oldest),
-    );
+    const runs: StoredRuns = {};
+    for (const [key, candidate] of Object.entries(stored)) {
+      const parsed = storedRunSchema.safeParse(candidate);
+      if (parsed.success && parsed.data.updatedAt >= oldest) runs[key] = candidate as RunState;
+    }
+    return runs;
   }
 }

@@ -1,11 +1,9 @@
 import { z } from 'zod';
-import type { FileMeta } from '../../shared/answers';
+import { MAX_FILE_BYTES, type FileMeta } from '../../shared/answers';
 import type { UploadFile } from '../../shared/types';
 import type { KeyValueStore } from './key-value-store';
 
 const STORAGE_KEY = 'resumeFile';
-/** Keeps the file well inside the extension's local storage quota. */
-export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 const fileSchema = z.object({
   name: z.string().min(1),

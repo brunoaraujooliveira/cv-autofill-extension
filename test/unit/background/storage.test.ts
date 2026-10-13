@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChromeLocalStore, InMemoryStore } from '../../../src/background/storage/key-value-store';
+import { ChromeLocalStore } from '../../../src/background/storage/key-value-store';
+import { InMemoryStore } from '../support/in-memory-store';
 import { ResumeRepository } from '../../../src/background/storage/resume';
 import { DEFAULT_SETTINGS, SettingsRepository } from '../../../src/background/storage/settings';
 

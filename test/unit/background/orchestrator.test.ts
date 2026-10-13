@@ -3,7 +3,7 @@ import { LlmError } from '../../../src/background/llm/client';
 import type { Mapper } from '../../../src/background/llm/mapper';
 import { Orchestrator } from '../../../src/background/orchestrator';
 import { AnswerBank } from '../../../src/background/storage/answer-bank';
-import { InMemoryStore } from '../../../src/background/storage/key-value-store';
+import { InMemoryStore } from '../support/in-memory-store';
 import { MappingCache } from '../../../src/background/storage/mapping-cache';
 import { ResumeRepository } from '../../../src/background/storage/resume';
 import { ResumeFileRepository } from '../../../src/background/storage/resume-file';
@@ -61,6 +61,7 @@ function step(
     buttons,
     repeatables: [],
     blockedOrigins: [],
+    looksFinal: false,
     ...extra,
   };
 }
@@ -140,6 +141,7 @@ describe('Orchestrator', () => {
         ),
       advance: vi.fn<TabGateway['advance']>().mockResolvedValue('advanced'),
       addBlock: vi.fn<TabGateway['addBlock']>().mockResolvedValue(true),
+      cancel: vi.fn<TabGateway['cancel']>().mockResolvedValue(undefined),
     };
     mapper = {
       map: vi.fn<Mapper['map']>().mockImplementation(fillEverything),
@@ -361,21 +363,22 @@ describe('Orchestrator', () => {
       expect(tabs.advance).toHaveBeenCalledOnce();
     });
 
-    it('tries once more when reading the blocked step again filled something new', async () => {
+    it('stops for review, without clicking again, when reading a blocked step filled more', async () => {
       const name = field('name');
       const late = field('late');
       pageShows(
         step([name]),
         step([{ ...name, value: 'x' }]),
         step([{ ...name, value: 'x' }, late]),
-        second,
       );
-      tabs.advance.mockResolvedValueOnce('disabled').mockResolvedValueOnce('advanced');
+      tabs.advance.mockResolvedValue('disabled');
       await run();
       const state = await confirm();
 
-      expect(tabs.advance).toHaveBeenCalledTimes(2);
-      expect(state.stepNumber).toBe(2);
+      expect(tabs.advance).toHaveBeenCalledOnce();
+      expect(state.phase).toBe('WAITING_USER_REVIEW');
+      expect(state.notice).toEqual({ code: 'review_new_fields' });
+      expect(state.decisions.map((d) => d.fieldId)).toEqual(['name', 'late']);
     });
 
     it('reports a click that changed nothing', async () => {
@@ -396,17 +399,49 @@ describe('Orchestrator', () => {
       expect(tabs.advance).toHaveBeenCalledWith(TAB, save);
     });
 
-    it('asks the model about unlabelled buttons, never offering one that may submit', async () => {
-      const onward = button('other', 'Onward');
-      const back = button('other', 'Back');
-      pageShows(step([field('name')], [back, onward]));
+    it('never clicks a button of unknown purpose, and does not ask the model to pick one', async () => {
+      pageShows(
+        step([field('name')], [button('other', 'Back'), button('other', 'Confirm details')]),
+      );
       await run();
-      await confirm();
-      expect(mapper.chooseAdvanceButton).toHaveBeenCalledWith([back, onward], expect.anything());
+      const state = await confirm();
 
-      const state = await orchestrator.get(TAB);
-      expect(state?.notice).toEqual({ code: 'no_next_button' });
+      expect(mapper.chooseAdvanceButton).not.toHaveBeenCalled();
       expect(tabs.advance).not.toHaveBeenCalled();
+      expect(state.notice).toEqual({ code: 'no_next_button' });
+    });
+
+    it('treats a step the page presents as its last one as final, even with a "Continue" button', async () => {
+      const lastStep = step([field('name')], [button('advance', 'Continue')], { looksFinal: true });
+      pageShows(lastStep);
+      const state = await run();
+
+      expect(state.phase).toBe('FINAL_REVIEW');
+      await expect(orchestrator.confirm(TAB)).rejects.toBeInstanceOf(InvalidTransitionError);
+      expect(tabs.advance).not.toHaveBeenCalled();
+    });
+
+    it('does not leave a final-looking step on its own with auto-advance on', async () => {
+      await settings.save({ autoAdvance: true });
+      pageShows(step([field('name')], [button('advance', 'Continue')], { looksFinal: true }));
+      await run();
+      expect(tabs.advance).not.toHaveBeenCalled();
+    });
+
+    it('stops advancing on its own after a fixed number of steps', async () => {
+      await settings.save({ autoAdvance: true });
+      let stepIndex = 0;
+      tabs.extract.mockImplementation(() =>
+        Promise.resolve(step([field(`field${stepIndex}`, { value: 'x' })])),
+      );
+      tabs.advance.mockImplementation(() => {
+        stepIndex += 1;
+        return Promise.resolve('advanced');
+      });
+      const state = await run();
+
+      expect(tabs.advance).toHaveBeenCalledTimes(20);
+      expect(state).toMatchObject({ phase: 'WAITING_USER_REVIEW', notice: { code: 'auto_limit' } });
     });
 
     it('moves on by itself when allowed and everything is confidently filled', async () => {
@@ -428,6 +463,154 @@ describe('Orchestrator', () => {
       pageShows(first);
       await run();
       expect(tabs.advance).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stopping and staying out of harm', () => {
+    it('stops at the next checkpoint when asked, before anything is filled', async () => {
+      pageShows(step([field('name')]));
+      mapper.map.mockImplementation(async (request, credentials) => {
+        await orchestrator.cancel(TAB);
+        return fillEverything(request, credentials);
+      });
+      const state = await run();
+
+      expect(tabs.fill).not.toHaveBeenCalled();
+      expect(state).toMatchObject({ phase: 'WAITING_USER_REVIEW', notice: { code: 'cancelled' } });
+      expect((await run()).phase).toBe('WAITING_USER_REVIEW');
+      expect(tabs.fill).toHaveBeenCalledOnce();
+    });
+
+    it('tells the page to stop mid-fill and reports what was filled until then', async () => {
+      pageShows(step([field('name'), field('phone')]));
+      tabs.fill.mockImplementation(async () => {
+        await orchestrator.cancel(TAB);
+        return [{ fieldId: 'name', status: 'filled' }];
+      });
+      const state = await run();
+
+      expect(tabs.cancel).toHaveBeenCalledWith(TAB);
+      expect(state).toMatchObject({
+        phase: 'WAITING_USER_REVIEW',
+        notice: { code: 'cancelled' },
+        results: [{ fieldId: 'name', status: 'filled' }],
+      });
+    });
+
+    it('ignores a request to stop when nothing is running', async () => {
+      expect(await orchestrator.cancel(TAB)).toBeNull();
+      pageShows(step([field('name')]));
+      expect((await run()).notice).toBeUndefined();
+    });
+
+    it('does not show the model text the applicant or the site typed', async () => {
+      const typed = field('notes', { type: 'textarea', value: 'Something private' });
+      const chosen = field('country', { type: 'select', options: ['Portugal'], value: 'Portugal' });
+      pageShows(step([typed, chosen, field('name')]));
+      await run();
+
+      const sent = mapper.map.mock.calls[0]?.[0].fields.map((f) => f.value);
+      expect(sent).toEqual(['[already filled in]', 'Portugal', '']);
+    });
+
+    it('shows the model its own earlier value when the page rejected it', async () => {
+      const birth = field('birth');
+      pageShows(
+        step([birth]),
+        step([{ ...birth, value: 'value of birth', error: 'Wrong format' }]),
+      );
+      await run();
+      expect(mapper.map.mock.calls[1]?.[0].fields[0]?.value).toBe('value of birth');
+    });
+
+    it('starts from nothing on another application opened in the same tab', async () => {
+      const cover = field('cover', { type: 'textarea' });
+      pageShows(step([cover]), step([{ ...cover, value: 'value of cover' }]));
+      await run();
+
+      // Same portal, same field identity, another job told apart only by the query.
+      tabs.url.mockResolvedValue(`${URL_1}?job=456`);
+      mapper.map.mockClear();
+      tabs.fill.mockClear();
+      const other = step([cover]);
+      pageShows({ ...other, url: `${URL_1}?job=456` });
+      const state = await run();
+
+      expect(mapper.map).toHaveBeenCalledOnce();
+      expect(state.key).toBe('jobs.example.com/apply/123?job=456');
+      expect(state.stepNumber).toBe(1);
+    });
+
+    it('carries on when the tab moved to the address of the step it read last', async () => {
+      const name = field('name');
+      const laterUrl = 'https://jobs.example.com/apply/123/step-2';
+      pageShows(
+        { ...step([name]), url: laterUrl },
+        { ...step([{ ...name, value: 'x' }]), url: laterUrl },
+      );
+      await run();
+      tabs.url.mockResolvedValue(laterUrl);
+      mapper.map.mockClear();
+      await run();
+      expect(mapper.map).not.toHaveBeenCalled();
+    });
+
+    it('reports a run the service worker lost midway as interrupted, not as still working', async () => {
+      await states.save({
+        tabId: TAB,
+        key: 'jobs.example.com/apply/123',
+        phase: 'MAPPING',
+        stepNumber: 1,
+        decisions: [],
+        results: [],
+        decided: {},
+        attempts: {},
+        added: {},
+        updatedAt: Date.now(),
+      });
+      expect(await orchestrator.get(TAB)).toMatchObject({
+        phase: 'ERROR',
+        error: { code: 'interrupted' },
+      });
+      pageShows(step([field('name')]));
+      expect((await run()).phase).toBe('WAITING_USER_REVIEW');
+    });
+
+    it('keeps the worker awake only while a run works, and gives back site access when done', async () => {
+      const stopKeepingAwake = vi.fn();
+      const keepAwake = vi.fn(() => stopKeepingAwake);
+      const revokeSiteAccess = vi.fn().mockResolvedValue(undefined);
+      orchestrator = new Orchestrator({
+        settings,
+        resume: new ResumeRepository(store),
+        resumeFile: new ResumeFileRepository(store),
+        answers,
+        cache,
+        states,
+        mapper: mapper as unknown as Mapper,
+        tabs,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        onChange: (state) => published.push(state),
+        keepAwake,
+        revokeSiteAccess,
+      });
+      pageShows(step([field('name')], [SUBMIT]));
+      await run();
+      expect(keepAwake).toHaveBeenCalledOnce();
+      expect(stopKeepingAwake).toHaveBeenCalledOnce();
+      expect(revokeSiteAccess).not.toHaveBeenCalled();
+
+      await orchestrator.finish(TAB);
+      await orchestrator.onTabClosed(TAB);
+      expect(revokeSiteAccess).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not take an answer while the run is working', async () => {
+      pageShows(step([field('name')]));
+      await run();
+      await orchestrator.start(TAB);
+      await expect(orchestrator.answer(TAB, 'name', 'Ana')).rejects.toThrow('busy');
+      await settled();
     });
   });
 

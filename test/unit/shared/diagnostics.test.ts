@@ -21,6 +21,7 @@ const run: RunState = {
     buttons: [],
     repeatables: [],
     blockedOrigins: ['https://forms.example'],
+    looksFinal: false,
     fields: [
       {
         id: 'f1',
@@ -59,6 +60,35 @@ describe('buildDiagnostics', () => {
     };
     expect(report.step.fields[0]).toMatchObject({ optionCount: 40, selector: '#country' });
     expect(report.step.fields[0]?.options).toHaveLength(15);
+  });
+
+  it('leaves out what went into the form and the query of the address unless asked', () => {
+    if (!run.step) throw new Error('The sample run has a step');
+    const filled: RunState = {
+      ...run,
+      decisions: [{ fieldId: 'f1', action: 'fill', value: 'Portugal', confidence: 1 }],
+      step: {
+        ...run.step,
+        url: 'https://jobs.example.com/apply?token=secret#me',
+        fields: run.step.fields.map((field) => ({ ...field, value: 'Portugal' })),
+      },
+    };
+    const redacted = buildDiagnostics(filled, '0.1.0');
+    expect(redacted).not.toContain('Portugal"');
+    expect(redacted).not.toContain('secret');
+    expect(JSON.parse(redacted)).toMatchObject({
+      step: { url: 'https://jobs.example.com/apply', fields: [{ value: '<8 characters>' }] },
+      decisions: [{ value: '<8 characters>' }],
+    });
+
+    const full = JSON.parse(buildDiagnostics(filled, '0.1.0', { includeValues: true })) as unknown;
+    expect(full).toMatchObject({
+      step: {
+        url: 'https://jobs.example.com/apply?token=secret#me',
+        fields: [{ value: 'Portugal' }],
+      },
+      decisions: [{ value: 'Portugal' }],
+    });
   });
 
   it('works before any step was read', () => {

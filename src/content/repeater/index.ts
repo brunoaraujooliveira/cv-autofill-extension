@@ -11,7 +11,10 @@ const ADD_WORDS =
   /^(add|adicionar|acrescentar|incluir|nova|novo|ajouter|hinzufugen|aggiungi|anadir|agregar)\b/;
 
 const KIND_WORDS: [RepeatableKind, RegExp][] = [
-  ['work', /(experience|experiencia|employment|emprego|work history|job|beruf|esperienza|emploi)/],
+  [
+    'work',
+    /(experience|experiencia|employment|emprego|work history|job history|beruf|esperienza|emploi)/,
+  ],
   [
     'education',
     /(education|educacao|formacao|school|escola|degree|academic|curso|course|qualifica|institu|universi|ausbildung|formation|istruzione)/,

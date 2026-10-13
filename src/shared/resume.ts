@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { en as zodEn, pt as zodPt } from 'zod/locales';
 import { createTranslator, type Locale } from './i18n';
+import { errorMessage } from './text';
 
 const DATE_FORMAT_ISSUE = '@@date-format';
 
@@ -157,7 +158,7 @@ export function parseResumeJson(json: string, locale: Locale): ResumeParseResult
     data = JSON.parse(json);
   } catch (error) {
     const t = createTranslator(locale);
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorMessage(error);
     return {
       ok: false,
       issues: [{ path: 'JSON', message: t('validation.invalidJson', { detail }) }],

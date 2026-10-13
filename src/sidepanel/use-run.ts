@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { RequestMap } from '../shared/messages';
-import type { FieldDecision, RunState } from '../shared/types';
+import type { FieldValue, RunState } from '../shared/types';
 import { onNotification, request } from '../ui/api';
+import { errorMessage } from '../shared/text';
 
 type RunRequest = 'run/start' | 'run/confirm' | 'run/answer' | 'run/finish';
-type AnswerValue = NonNullable<FieldDecision['value']>;
 
 export interface RunActions {
   start: (options?: { jobDescription?: string; fresh?: boolean; redo?: boolean }) => void;
   confirm: () => void;
   finish: () => void;
-  answer: (fieldId: string, value: AnswerValue) => void;
+  /** Asks a working run to stop at its next checkpoint. */
+  cancel: () => void;
+  answer: (fieldId: string, value: FieldValue) => void;
 }
 
 export interface RunController extends RunActions {
@@ -47,7 +49,7 @@ export function useRun(tabId: number | null): RunController {
       request(type, { tabId, ...extra })
         .then(setRun)
         .catch((error: unknown) => {
-          setActionError(error instanceof Error ? error.message : String(error));
+          setActionError(errorMessage(error));
         });
     },
     [tabId],
@@ -64,11 +66,17 @@ export function useRun(tabId: number | null): RunController {
       finish: () => {
         send('run/finish', {});
       },
+      cancel: () => {
+        if (tabId === null) return;
+        request('run/cancel', { tabId }).catch((error: unknown) => {
+          setActionError(errorMessage(error));
+        });
+      },
       answer: (fieldId, value) => {
         send('run/answer', { fieldId, value });
       },
     }),
-    [send],
+    [send, tabId],
   );
 
   return { run, actionError, ...actions };

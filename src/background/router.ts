@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Reply, Request, RequestMap, RequestType } from '../shared/messages';
 import { toSettingsView, type SettingsView } from '../shared/settings';
 import type { Orchestrator } from './orchestrator';
@@ -6,6 +7,7 @@ import type { MappingCache } from './storage/mapping-cache';
 import { toFileMeta, type ResumeFileRepository } from './storage/resume-file';
 import type { ResumeRepository } from './storage/resume';
 import type { SettingsRepository } from './storage/settings';
+import { errorMessage } from '../shared/text';
 
 export interface RouterDependencies {
   settings: SettingsRepository;
@@ -13,9 +15,34 @@ export interface RouterDependencies {
   resumeFile: ResumeFileRepository;
   answers: AnswerBank;
   cache: MappingCache;
-  orchestrator: Pick<Orchestrator, 'start' | 'get' | 'confirm' | 'answer' | 'finish'>;
+  orchestrator: Pick<Orchestrator, 'start' | 'get' | 'confirm' | 'answer' | 'finish' | 'cancel'>;
   onSettingsChanged: (settings: SettingsView) => void;
 }
+
+const tabPayload = z.object({ tabId: z.number().int().nonnegative() });
+
+/**
+ * Shapes of the payloads whose handlers do not validate them further down. Settings, the
+ * resume and the resume file are validated by their repositories.
+ */
+const PAYLOAD_SCHEMAS: Partial<Record<RequestType, z.ZodType>> = {
+  'answers/save': z.object({ id: z.string().min(1), answer: z.string().trim().min(1) }),
+  'answers/remove': z.object({ id: z.string().min(1) }),
+  'cache/clear': z.object({ domain: z.string().min(1) }),
+  'run/get': tabPayload,
+  'run/confirm': tabPayload,
+  'run/finish': tabPayload,
+  'run/cancel': tabPayload,
+  'run/start': tabPayload.extend({
+    jobDescription: z.string().max(50_000).optional(),
+    fresh: z.boolean().optional(),
+    redo: z.boolean().optional(),
+  }),
+  'run/answer': tabPayload.extend({
+    fieldId: z.string().min(1),
+    value: z.union([z.string(), z.boolean(), z.array(z.string())]),
+  }),
+};
 
 type Handlers = {
   [T in RequestType]: (
@@ -60,15 +87,18 @@ export class Router {
       'run/confirm': ({ tabId }) => orchestrator.confirm(tabId),
       'run/answer': ({ tabId, fieldId, value }) => orchestrator.answer(tabId, fieldId, value),
       'run/finish': ({ tabId }) => orchestrator.finish(tabId),
+      'run/cancel': ({ tabId }) => orchestrator.cancel(tabId),
     };
   }
 
   async handle(request: Request): Promise<Reply<unknown>> {
     try {
+      // Messages are checked like any other outside input before a handler sees them.
+      const payload: unknown = PAYLOAD_SCHEMAS[request.type]?.parse(request.payload);
       const handler = this.handlers[request.type] as (payload: unknown) => unknown;
-      return { ok: true, data: await handler(request.payload) };
+      return { ok: true, data: await handler(payload ?? request.payload) };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return { ok: false, error: errorMessage(error) };
     }
   }
 }

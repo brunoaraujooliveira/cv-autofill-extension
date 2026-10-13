@@ -79,6 +79,15 @@ export const en = {
   'run.diagnostics': 'Copy diagnostics',
   'run.diagnostics.copied': 'Copied. Paste it where you are reporting the problem.',
   'run.restart.hint': 'Forgets what was filled and reviewed on this step and decides it again.',
+  'run.stop': 'Stop',
+  'run.notice.cancelled': 'Stopped. Nothing else was changed; review the page as it is.',
+  'run.notice.auto_limit':
+    'Stopped advancing on its own after many steps. Press Next step to go on.',
+  'run.notice.review_new_fields':
+    'The step did not advance, and more fields were filled in. Review them, then press Next step again.',
+  'run.error.interrupted':
+    'The run was interrupted. Read the page again to pick up where it stopped.',
+  'run.diagnostics.values': 'Include filled-in values and the full address',
   'run.fresh': 'Start over',
   'run.step': 'Step {number}',
   'run.jobDescription': 'Job description (optional)',

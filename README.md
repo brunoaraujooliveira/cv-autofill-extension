@@ -14,10 +14,11 @@ Many employers ask you to retype your whole resume into their own portal, and th
 - **Handles real-world widgets.** Native inputs, selects, radio groups, checkboxes, textareas, file uploads, and custom comboboxes (ARIA `combobox`/`listbox`/`option`), including ones that only list options while open or that only suggest and accept free text.
 - **Works with reactive frameworks.** Values are set through the native setter and followed by the events React, Vue and Angular listen for.
 - **Reaches into open shadow DOM and iframes**, including iframes from another origin, once you grant access to that origin.
+- **Only fills what you can see.** Fields that are transparent, parked off-screen or otherwise hidden are skipped, whatever they are labelled, so a page cannot collect your data behind your back.
 - **Never invents data.** A field the resume does not answer is handed to you as a question. Values for selects, radios and comboboxes must be one of the options the form offers.
 - **Copies your resume as written.** Names, titles and descriptions go in word for word, in the language of your resume.
 - **Corrects itself from validation errors.** If the page rejects a value (a date format, for instance), the error message goes back to the model for a corrected value, at most twice per field.
-- **Walks multi-step forms.** It finds the "Next" button in several languages, waits for the step to change, and stops at the final review.
+- **Walks multi-step forms.** It finds the "Next" button in several languages, waits for the step to change, and stops at the final review. Only a button whose own text says "next" is ever clicked; a button of unknown purpose never is.
 - **Fills repeatable sections.** It clicks "Add" until there is one block per work experience, degree, certificate or language in your resume, including on forms that only allow a new block once the previous one is filled in.
 - **Resumes after a reload.** What was already decided is restored without asking the model again.
 - **Learns.** Answers you give to questions outside your resume are kept in an answer bank. Field mappings confirmed on a site are cached, so the next application on that site needs few or no model calls.
@@ -116,29 +117,33 @@ Shortcuts can be changed at `chrome://extensions/shortcuts`.
 
 - **Read and fill again** does the current step over from nothing: it forgets what was decided for it, empties the text the extension typed, and decides every field again without the cache. What you typed stays. After a page reload, the same button restores the step instead, without calling the model.
 - **Start over** discards everything decided in the whole application.
-- **Copy diagnostics** copies a description of the run (what was read, decided and done) to paste into a bug report. It includes the values filled in and the page address, so check it before sharing.
+- **Stop** appears while the extension is working. It ends the run before the next field and leaves the page as it is.
+- **Copy diagnostics** copies a description of the run (what was read, decided and done) to paste into a bug report. By default it leaves out the values that went into the form and the query of the page address; tick the box beside it to include them, and check the result before sharing.
 
 ## Privacy
 
 - The only network calls the extension makes are to the LLM provider (`api.anthropic.com`).
-- Each call carries: the description of the visible fields (type, label, options, current value, validation message), your resume, your answer bank and, if you pasted one, the job description. When the "Next" button is ambiguous, the texts of the visible buttons are sent too.
+- Each call carries: the description of the visible fields (type, label, options, validation message), your resume, your answer bank and, if you pasted one, the job description. When several buttons read like "Next", their texts are sent too.
+- A field's current value is sent only when the extension itself filled it or when it is a choice among the page's own options. Text you typed by hand, or that the site filled in from your account, is replaced by a marker saying the field is already answered.
 - It never sends the page's HTML, selectors, cookies, hidden fields or password fields.
 - Your API key, resume, resume file, answers and cache live in `chrome.storage.local`, in your browser profile. They are not encrypted beyond what your operating system and Chrome provide.
 - The API key and the resume are never written to logs.
 - Nothing runs on a page until you activate the extension on that tab.
+- Scripts running inside web pages cannot read the extension's storage or ask its service worker for your data: storage is restricted to the extension's own pages, and requests are only served to them.
+- Consent and agreement checkboxes are never ticked for you. That is enforced in code, not left to the model.
 
 Your resume is personal data and it is sent to a third-party service on every run. Read [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) before using the extension.
 
 ## Permissions
 
-| Permission                          | Why                                                                       |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| `storage`                           | Keep settings, API key, resume, answers and cache in the browser          |
-| `sidePanel`                         | Show the side panel                                                       |
-| `activeTab`                         | Access only the tab you activated the extension on, until you leave it    |
-| `scripting`                         | Inject, into that tab, the script that reads and fills the form           |
-| Host of the LLM provider's API      | The extension's only network destination                                  |
-| Optional hosts, requested on demand | Read a frame from another site embedded in the form, one origin at a time |
+| Permission                          | Why                                                                                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`                           | Keep settings, API key, resume, answers and cache in the browser                                                                                  |
+| `sidePanel`                         | Show the side panel                                                                                                                               |
+| `activeTab`                         | Access only the tab you activated the extension on, until you leave it                                                                            |
+| `scripting`                         | Inject, into that tab, the script that reads and fills the form                                                                                   |
+| Host of the LLM provider's API      | The extension's only network destination                                                                                                          |
+| Optional hosts, requested on demand | Read a frame from another site embedded in the form, one origin at a time. Given back when the application is marked as done or its tab is closed |
 
 The extension declares no permanent access to any site and exposes no resources to pages.
 
@@ -146,12 +151,15 @@ The extension declares no permanent access to any site and exposes no resources 
 
 - **Custom date pickers.** The extension types the date and fixes the format from the page's error message. It does not navigate calendars that only accept clicks.
 - **Closed shadow DOM** is not read.
-- **Submit detection is by button text**, in English, Portuguese, Spanish, French, German and Italian. When in doubt a button is treated as submitting and is not clicked.
+- **The final step is recognised by signs on the page**: a button whose text submits, sends or confirms (in English, Portuguese, Spanish, French, German and Italian), the last position of a stepper, or a title such as "Review". When in doubt a button is treated as submitting and is not clicked. A form whose last button says only "Continue", with no stepper and no such title, is not recognised as final; this is why the default is to stop for your review at every step.
+- **Steps without a recognisable "Next" button** are not advanced: click it on the page yourself, then read the new step.
+- **Fields covered by another element** are not detected as hidden.
 - **Repeatable sections** are recognised by their "Add" button and section title, in the same languages.
 - **Verbatim copying is an instruction to the model**, not a check in code. Long text fields are flagged for review for that reason.
 - **Model output varies.** The same form can be filled slightly differently on two runs. Always review before submitting.
-- **Cost.** Each pass over a step is one model call that includes your resume. Long lists that grow one block at a time take one call per block.
-- An application is identified by the address where the run started. Portals that reuse one address for different jobs may need **Start over**.
+- **Cost.** Each pass over a step is one model call that includes your resume. Long lists that grow one block at a time take one call per block. Automatic advance stops after 20 steps.
+- **Long model calls.** Chrome may stop an extension's service worker when a network response takes more than about 30 seconds. A very large step can hit that; the panel then reports the run as interrupted and reading the page again resumes it.
+- An application is identified by the full address where the run started. Portals that reuse one address for different jobs may need **Start over**.
 
 ## Development
 

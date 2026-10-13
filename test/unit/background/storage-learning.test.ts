@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AnswerBank } from '../../../src/background/storage/answer-bank';
-import { InMemoryStore } from '../../../src/background/storage/key-value-store';
+import { InMemoryStore } from '../support/in-memory-store';
 import { MappingCache } from '../../../src/background/storage/mapping-cache';
-import { MAX_FILE_BYTES, ResumeFileRepository } from '../../../src/background/storage/resume-file';
+import { ResumeFileRepository } from '../../../src/background/storage/resume-file';
+import { MAX_FILE_BYTES } from '../../../src/shared/answers';
 import { NO_TAB, runKey, StateStore } from '../../../src/background/storage/state-store';
 import { mergeSnapshots } from '../../../src/background/step-merge';
 import type {
@@ -222,6 +223,14 @@ describe('MappingCache', () => {
     expect(await cache.summary()).toEqual([]);
   });
 
+  it.each(['constructor', '__proto__', 'basics.toString', 'work.map'])(
+    'does not follow the source "%s" beyond the resume\'s own data',
+    async (source) => {
+      await cache.save(DOMAIN, 'sig', [field('f1')], [fill('f1', 'x', { source })], data);
+      expect(await cache.summary()).toEqual([]);
+    },
+  );
+
   it('skips a cached option the field no longer offers', async () => {
     const country = field('f1', {
       label: 'Country',
@@ -348,6 +357,20 @@ describe('StateStore', () => {
     expect(await states.loadByTab(2)).toBeNull();
   });
 
+  it('ignores stored runs that do not have the shape this version expects', async () => {
+    const store = new InMemoryStore();
+    await store.set('runs', {
+      good: run('good', 1, clock),
+      old: { tabId: 2, phase: 'RUNNING', updatedAt: clock },
+      broken: 'not a run',
+    });
+    const fresh = new StateStore(store, () => clock);
+
+    expect((await fresh.loadByKey('good'))?.tabId).toBe(1);
+    expect(await fresh.loadByKey('old')).toBeNull();
+    expect(await fresh.loadByTab(2)).toBeNull();
+  });
+
   it('removes runs and lets old ones expire', async () => {
     await states.save(run('a.example', 1, clock));
     await states.save(run('b.example', 2, clock));
@@ -360,11 +383,13 @@ describe('StateStore', () => {
 });
 
 describe('runKey', () => {
-  it('uses host and path, ignoring query, hash and trailing slashes', () => {
-    expect(runKey('https://jobs.example.com/apply/123/?step=2#top')).toBe(
-      'jobs.example.com/apply/123',
+  it('uses the whole address, since portals tell jobs apart by path, query or fragment', () => {
+    expect(runKey('https://jobs.example.com/apply/123/')).toBe('jobs.example.com/apply/123');
+    expect(runKey('https://jobs.example.com/apply?job=123')).toBe('jobs.example.com/apply?job=123');
+    expect(runKey('https://jobs.example.com/#/apply/123')).toBe('jobs.example.com#/apply/123');
+    expect(runKey('https://jobs.example.com/apply?job=1')).not.toBe(
+      runKey('https://jobs.example.com/apply?job=2'),
     );
-    expect(runKey('https://jobs.example.com/')).toBe('jobs.example.com');
     expect(runKey('not a url')).toBe('not a url');
   });
 });
@@ -377,6 +402,7 @@ describe('mergeSnapshots', () => {
     buttons: [],
     repeatables: [],
     iframeOrigins: [],
+    looksFinal: false,
     ...overrides,
   });
 

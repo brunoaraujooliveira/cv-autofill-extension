@@ -22,6 +22,8 @@ describe('isVisible', () => {
     ['the hidden attribute', '<div hidden><input id="target" /></div>'],
     ['aria-hidden', '<div aria-hidden="true"><input id="target" /></div>'],
     ['an inert ancestor', '<div inert><input id="target" /></div>'],
+    ['full transparency', '<input id="target" style="opacity:0" />'],
+    ['a fully transparent ancestor', '<div style="opacity:0"><p><input id="target" /></p></div>'],
     [
       'an inactive tab panel',
       '<div role="tabpanel" hidden><fieldset><input id="target" /></fieldset></div>',
@@ -36,6 +38,10 @@ describe('isVisible', () => {
         '<div style="visibility:hidden"><input id="target" style="visibility:visible" /></div>',
       ),
     ).toBe(true);
+  });
+
+  it('accepts partial transparency', () => {
+    expect(visible('<input id="target" style="opacity:0.4" />')).toBe(true);
   });
 
   it('rejects elements with no size', () => {
@@ -55,14 +61,26 @@ describe('isVisible', () => {
 });
 
 describe('hasLayoutBox', () => {
-  it('requires both width and height', () => {
+  const boxAt = (left: number, top: number, width: number, height: number) => {
     const element = document.createElement('div');
-    const withRect = (width: number, height: number) => {
-      element.getBoundingClientRect = () => ({ width, height }) as DOMRect;
-      return hasLayoutBox(element);
-    };
-    expect(withRect(10, 10)).toBe(true);
-    expect(withRect(0, 10)).toBe(false);
-    expect(withRect(10, 0)).toBe(false);
+    element.getBoundingClientRect = () =>
+      ({ left, top, width, height, right: left + width, bottom: top + height }) as DOMRect;
+    return hasLayoutBox(element);
+  };
+
+  it('accepts a box with real size on the page', () => {
+    expect(boxAt(10, 10, 120, 24)).toBe(true);
+    expect(boxAt(10, 5000, 120, 24)).toBe(true);
+  });
+
+  it('rejects boxes collapsed to nothing or to a sliver', () => {
+    expect(boxAt(10, 10, 0, 24)).toBe(false);
+    expect(boxAt(10, 10, 120, 0)).toBe(false);
+    expect(boxAt(10, 10, 1, 1)).toBe(false);
+  });
+
+  it('rejects boxes parked off the top or left of the page', () => {
+    expect(boxAt(-9999, 10, 120, 24)).toBe(false);
+    expect(boxAt(10, -9999, 120, 24)).toBe(false);
   });
 });

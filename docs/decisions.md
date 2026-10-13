@@ -69,7 +69,7 @@ The choices made where the requirements left room, each with its reason. Several
 - **Submit is never clicked, in three layers.** The machine has no submit event; the orchestrator never offers a button classified as submit, not even to the model; and the content script classifies the button again at the moment of the click and refuses.
 - A button is "submit" if its text holds any submit word, even when it also holds "continue". Erring towards not clicking costs the user one click.
 - A step whose only way forward is to submit goes straight to the final review, single-page forms included.
-- The model is only asked about buttons when there is more than one "next" candidate or no recognised button.
+- The model is only asked about buttons when more than one reads like "next", and only to choose among those.
 - A step change is detected through DOM mutations (a different address or a different set of fields). The 15-second timeout is only a safety limit. When the click loads another document, the service worker waits for the tab to finish loading.
 - The limit on passes over one step (40) is only a safety net. What ends the passes is running out of work: corrections are capped per field and blocks by the size of the resume.
 
@@ -101,6 +101,32 @@ The choices made where the requirements left room, each with its reason. Several
 - Never cached: generated text, fields showing an error, open questions, and answers given for one form only.
 - The answer bank keeps what the user answers in the side panel, except checkboxes (consent) and uploads. Matching a question worded differently is left to the model, which receives the bank; there are no local embeddings.
 - The resume file is kept in `chrome.storage.local` (4 MB limit) rather than IndexedDB: it fits comfortably and uses the same testable repository as the rest.
+
+## Keeping the user safe
+
+These came from a security review of the first public version.
+
+- **Only what the user can see is filled.** Besides `display`, `visibility`, `hidden` and `aria-hidden`, a field is skipped when it or an ancestor is fully transparent, when its box is under two pixels, or when it sits off the top or left of the page. A page could otherwise collect saved answers, or the resume file, in fields the user never sees, and read them without any submit. Native radios, checkboxes and file inputs hidden behind a styled label count as visible only when that label is.
+- **A button of unknown purpose is never clicked.** Earlier, when no button read like "next", the model was asked to pick one among all the others; only its judgement stood between the extension and a "Confirm". Now the model only chooses among buttons whose own text already says "next". Without one, the user advances by hand.
+- **The list of submit words is long on purpose** and includes "confirm", "complete", "done" and "register" in six languages. "Continue with Google" and other sign-in buttons are not taken for the form's next step.
+- **A link with a real destination is not a button**, however it is styled.
+- **The page can mark a step as final.** The last position of a stepper, or a title such as "Review", makes the step final whatever its buttons say, because a "Continue" there may send the application.
+- **"Add" is checked again at click time**: still enabled, and its text still neither "next" nor "submit".
+- **A blocked step is never clicked twice without review.** When "Next" does nothing, the step is read again; if that filled something, the run stops for the user to look at it instead of clicking again.
+- **Runs do not leak between applications.** A run is keyed by the full address, query and fragment included, and a tab's run only carries on while the tab is where the run started or on the step it read last. Before, a second job on the same portal inherited the first one's cover letter.
+- **Consent is the applicant's.** A checkbox whose label agrees to, accepts, authorises or declares something is never ticked from a model decision; the validator turns it into a question. Before, only the prompt said so.
+- **Text the extension did not type is not sent to the model.** What the applicant wrote by hand, or the site filled in from their account, is replaced by a marker. Choices among the page's own options are sent as they are.
+- **Requests are served to the extension's own pages only.** The service worker ignores messages whose sender is not an extension page, and `chrome.storage.local` is restricted to trusted contexts, so a script in a compromised page process cannot read the key, the resume or the answers. An end-to-end test checks both from inside a page.
+- **Every request payload is validated** before a handler sees it.
+- **Optional site access is given back** when an application is marked as done or its tab is closed.
+- **The resume file only travels to a frame that is about to attach it.**
+- **A run can be stopped**, between one field and the next, and automatic advance ends after 20 steps, so a form that never ends cannot spend without limit.
+- **Diagnostics leave out values and the address's query by default**, since they get pasted into public issues.
+- **Paths from the model are followed through own properties only**, so a `source` such as `constructor` cannot reach beyond the resume's data.
+- **A lost service worker is reported, not hidden.** A run stored as working with nothing running is shown as interrupted, and an extension API call every 20 seconds keeps the worker awake while a run works. Chrome can still stop the worker when a single response takes more than about 30 seconds; streaming the model's answer would remove that limit and is not done yet.
+- **A failure reported by the page is a failure.** Only a lost connection after clicking "Next" is read as the page having navigated.
+
+Known gaps: a field covered by another element is not detected as hidden; a final step whose only signal is a button saying "Continue" is not recognised; page text (labels, options, error messages) reaches the model's prompt, so a hostile page can try to steer it, bounded by the checks above (visible fields only, options only, no consent, no unknown buttons, review before every step by default).
 
 ## Permissions
 

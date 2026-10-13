@@ -16,21 +16,43 @@ const MAX_LOOKALIKE_TEXT_LENGTH = 60;
 /** Custom elements other browser extensions inject into pages; their buttons are not the form's. */
 const INJECTED_UI = /grammarly|languagetool|^lt-|deepl|1password|lastpass|bitwarden|dashlane/i;
 
-/** Words that send or finish an application. Matched on text without accents or punctuation. */
-const SUBMIT_WORDS =
-  /\b(submit|apply|send|finish|enviar|submeter|candidatar|candidatarme|finalizar|concluir|absenden|bewerben|einreichen|abschicken|envoyer|postuler|soumettre|invia|inviare|candidati|candidarsi|solicitar|postular)\b/;
+/**
+ * Words that send, confirm or finish an application. Matched on text without accents or
+ * punctuation. The list errs on the long side: a button wrongly taken for "submit" costs the
+ * user one click, a submit wrongly taken for something else cannot be undone.
+ */
+const SUBMIT_WORDS = new RegExp(
+  `\\b(${[
+    // English
+    'submit|apply|send|finish|confirm|complete|done|register|sign up|signup|place|pay',
+    // Portuguese and Spanish
+    'enviar|submeter|candidatar|candidatarme|candidate se|candidatura|aplicar|finalizar|concluir',
+    'confirmar|terminar|registar|registrar|inscrever|solicitar|postular|postularme',
+    // German
+    'absenden|senden|abschicken|bewerben|bewerbung|einreichen|bestatigen|abschliessen|abschliesen',
+    // French
+    'envoyer|postuler|soumettre|valider|confirmer|terminer',
+    // Italian
+    'invia|inviare|candidati|candidarsi|conferma|confermare|termina',
+  ].join('|')})\\b`,
+);
 
 /** Words that move to the next step without sending anything. */
 const ADVANCE_WORDS =
   /\b(next|continue|proceed|seguinte|continuar|proximo|proxima|avancar|prosseguir|weiter|fortfahren|suivant|suivante|continuer|avanti|continua|prosegui|siguiente)\b/;
 
+/** "Continue with Google", "Sign in": these leave the form for another service. */
+const SIGN_IN_WORDS =
+  /\b(sign in|signin|log in|login|sso|entrar|iniciar sessao|anmelden|connexion|accedi)\b|\b(with|com|mit|avec|con)\s+(google|linkedin|facebook|apple|microsoft|github|indeed|xing|seek)\b/;
+
 /**
  * Classifies a button by its text. Anything that may submit is "submit", even when it also
- * reads like "continue": a missed advance costs a click, a wrong submit cannot be undone.
+ * reads like "continue".
  */
 export function classifyButtonText(text: string): ButtonKind {
   const normalized = normalizeForMatch(text);
   if (SUBMIT_WORDS.test(normalized)) return 'submit';
+  if (SIGN_IN_WORDS.test(normalized)) return 'other';
   return ADVANCE_WORDS.test(normalized) ? 'advance' : 'other';
 }
 
@@ -54,12 +76,19 @@ export interface FoundButton {
   element: HTMLElement;
 }
 
+/** Inside a link with a real destination: clicking it navigates away instead of acting on the form. */
+function leadsElsewhere(element: Element): boolean {
+  const href = element.closest('a[href]')?.getAttribute('href')?.trim() ?? '';
+  return href !== '' && href !== '#' && !href.toLowerCase().startsWith('javascript:');
+}
+
 /**
  * A look-alike counts when it is the innermost one, holds nothing but a short text, and is
  * not just the styled inside of a real button.
  */
 function isLookalikeButton(element: Element): boolean {
   if (element.matches(BUTTONS) || element.closest(BUTTONS)) return false;
+  if (leadsElsewhere(element)) return false;
   if (element.querySelector(`${BUTTONS}, ${BUTTON_LOOKALIKES}, ${FORM_CONTROLS}`)) return false;
   return buttonText(element).length <= MAX_LOOKALIKE_TEXT_LENGTH;
 }

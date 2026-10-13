@@ -84,6 +84,15 @@ export const pt: Messages = {
   'run.diagnostics': 'Copiar diagnóstico',
   'run.diagnostics.copied': 'Copiado. Cole onde estiver relatando o problema.',
   'run.restart.hint': 'Esquece o que foi preenchido e revisado nesta etapa e decide tudo de novo.',
+  'run.stop': 'Parar',
+  'run.notice.cancelled': 'Parado. Nada mais foi alterado; revise a página como está.',
+  'run.notice.auto_limit':
+    'O avanço automático parou depois de muitas etapas. Clique em Avançar para continuar.',
+  'run.notice.review_new_fields':
+    'A etapa não avançou e mais campos foram preenchidos. Revise e clique em Avançar de novo.',
+  'run.error.interrupted':
+    'A execução foi interrompida. Leia a página de novo para retomar de onde parou.',
+  'run.diagnostics.values': 'Incluir os valores preenchidos e o endereço completo',
   'run.fresh': 'Recomeçar do zero',
   'run.step': 'Etapa {number}',
   'run.jobDescription': 'Descrição da vaga (opcional)',

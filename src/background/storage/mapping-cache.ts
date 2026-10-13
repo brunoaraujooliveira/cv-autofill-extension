@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { AnswerEntry, CacheSummary } from '../../shared/answers';
 import type { Resume } from '../../shared/resume';
 import { fieldKey } from '../../shared/step';
-import { findOptionIndex, hashText, isFormatHint } from '../../shared/text';
+import { findOptionIndex, hashText, isNamingLabel } from '../../shared/text';
 import type { FieldDecision, FieldSchema } from '../../shared/types';
 import type { KeyValueStore } from './key-value-store';
 
@@ -33,7 +33,10 @@ export interface SourceData {
 function readPath(root: unknown, path: string): unknown {
   let current = root;
   for (const segment of path.split(/[.[\]]+/).filter(Boolean)) {
-    if (typeof current !== 'object' || current === null) return undefined;
+    // Own properties only: a path is data from the model and must not reach "constructor" and the like.
+    if (typeof current !== 'object' || current === null || !Object.hasOwn(current, segment)) {
+      return undefined;
+    }
     current = (current as Record<string, unknown>)[segment];
   }
   return current;
@@ -44,7 +47,8 @@ function hashSource(source: string | undefined, data: SourceData): string | null
   const value = source?.startsWith(ANSWER_PREFIX)
     ? data.answers.find((answer) => answer.id === source.slice(ANSWER_PREFIX.length))?.answer
     : readPath(data.resume, source ?? '');
-  return value === undefined ? null : hashText(JSON.stringify(value));
+  const serialized = value === undefined ? undefined : JSON.stringify(value);
+  return typeof serialized === 'string' ? hashText(serialized) : null;
 }
 
 function isCacheable(decision: FieldDecision): boolean {
@@ -52,11 +56,6 @@ function isCacheable(decision: FieldDecision): boolean {
   if (decision.action !== 'fill' || decision.needsReview) return false;
   // Answers typed for one form (consent boxes above all) are only reused through the answer bank.
   return decision.origin !== 'user' || decision.source !== undefined;
-}
-
-/** Fields are remembered by label; one that only shows a format would match unrelated fields. */
-function hasUsableLabel(field: FieldSchema): boolean {
-  return field.label.trim() !== '' && !isFormatHint(field.label);
 }
 
 function stillFits(field: FieldSchema, entry: CacheEntry): boolean {
@@ -85,7 +84,7 @@ export class MappingCache {
       const field = fieldsById.get(decision.fieldId);
       const sourceHash = hashSource(decision.source, data);
       if (!field || field.error || !isCacheable(decision) || sourceHash === null) continue;
-      if (!hasUsableLabel(field)) continue;
+      if (!isNamingLabel(field.label)) continue;
       entries.push({
         fieldKey: fieldKey(field),
         action: decision.action === 'skip' ? 'skip' : 'fill',
@@ -114,7 +113,8 @@ export class MappingCache {
     const decisions: FieldDecision[] = [];
     for (const field of fields) {
       const entry = byKey.get(fieldKey(field));
-      if (!entry || field.error || !hasUsableLabel(field) || !stillFits(field, entry)) continue;
+      if (!entry || field.error || !isNamingLabel(field.label) || !stillFits(field, entry))
+        continue;
       if (hashSource(entry.source, data) !== entry.sourceHash) continue;
       decisions.push({
         fieldId: field.id,

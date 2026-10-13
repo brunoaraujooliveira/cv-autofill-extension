@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Resume } from '../../shared/resume';
-import { findOptionIndex } from '../../shared/text';
+import { askUser } from '../../shared/step';
+import { findOptionIndex, normalizeForMatch } from '../../shared/text';
 import type { AnswerEntry } from '../../shared/answers';
 import type { ButtonInfo, FieldDecision, FieldSchema } from '../../shared/types';
 import { LlmError, type LlmClient } from './client';
@@ -40,6 +41,10 @@ const wireResponseSchema = z.object({ decisions: z.array(wireDecisionSchema) });
 
 const buttonChoiceSchema = z.object({ index: z.number().int().nullable() });
 
+/** Labels of checkboxes that agree to, accept or declare something. */
+const CONSENT_WORDS =
+  /\b(agree|consent|accept|acknowledge|authori[sz]e|certify|declare|terms|conditions|privacy|policy|gdpr|concordo|aceito|aceitar|autorizo|declaro|consinto|consentimento|termos|condicoes|privacidade|politica|rgpd|lgpd|acepto|terminos|privacidad|einverstanden|stimme|zustimm\w*|akzeptier\w*|datenschutz\w*|agb|accepte|consens|autorise|confidentialite|accetto|acconsento|informativa)\b/;
+
 type WireDecision = z.infer<typeof wireDecisionSchema>;
 type FillValue = NonNullable<FieldDecision['value']>;
 
@@ -50,10 +55,6 @@ interface Interpretation {
 }
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
-
-function askUser(fieldId: string, reason: string): FieldDecision {
-  return { fieldId, action: 'ask_user', confidence: 0, reason };
-}
 
 function matchOptions(field: FieldSchema, value: string | string[]): FillValue | Error {
   const options = field.options ?? [];
@@ -70,7 +71,10 @@ function matchOptions(field: FieldSchema, value: string | string[]): FillValue |
 function validateValue(field: FieldSchema, value: WireDecision['value']): FillValue | Error {
   if (value === null || value === undefined) return new Error('action is "fill" but value is null');
   if (field.type === 'checkbox') {
-    return typeof value === 'boolean' ? value : new Error('checkboxes take true or false');
+    if (typeof value !== 'boolean') return new Error('checkboxes take true or false');
+    // Agreeing on the applicant's behalf is not the model's call, whatever it was told.
+    const givesConsent = value && CONSENT_WORDS.test(normalizeForMatch(field.label));
+    return givesConsent ? new Error('consent has to be given by the applicant') : value;
   }
   if (typeof value === 'boolean') return new Error('only checkboxes take true or false');
   if (field.type === 'file') {

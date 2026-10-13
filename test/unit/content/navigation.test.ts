@@ -7,7 +7,7 @@ import {
   classifyButtonText,
   findButtons,
 } from '../../../src/content/navigator/buttons';
-import { findStepTitle } from '../../../src/content/navigator/step-id';
+import { findStepTitle, looksLikeFinalStep } from '../../../src/content/navigator/step-id';
 import { waitForStepChange } from '../../../src/content/navigator/wait';
 import { addBlock, findRepeatables } from '../../../src/content/repeater';
 import { capturePage } from '../../../src/content/snapshot';
@@ -51,6 +51,33 @@ describe('classifyButtonText', () => {
     'Invia',
   ])('treats "%s" as submitting', (text) => {
     expect(classifyButtonText(text)).toBe('submit');
+  });
+
+  it.each([
+    'Confirm',
+    'Confirm and continue',
+    'Complete application',
+    'Done',
+    'Register',
+    'Sign up',
+    'Aplicar',
+    'Candidate-se',
+    'Confirmar candidatura',
+    'Bewerbung senden',
+    'Valider',
+    'Terminer',
+    'Conferma',
+  ])('also treats "%s" as submitting', (text) => {
+    expect(classifyButtonText(text)).toBe('submit');
+  });
+
+  it.each([
+    'Continue with Google',
+    'Continuar com LinkedIn',
+    'Sign in to continue',
+    'Weiter mit Xing',
+  ])('does not take "%s" for the next step of the form', (text) => {
+    expect(classifyButtonText(text)).toBe('other');
   });
 
   it.each(['Continue and submit', 'Next: send application', 'Finish and continue'])(
@@ -127,6 +154,14 @@ describe('findButtons', () => {
     ]);
   });
 
+  it('never takes a link with a real destination for a button, however it is styled', () => {
+    render(`
+      <a id="oauth" class="btn btn-primary" href="https://accounts.example.com/login">Continue</a>
+      <a class="btn" href="/jobs"><span class="btn-label">Next</span></a>
+      <a id="hash" class="btn" href="#">Next</a>`);
+    expect(findButtons(document, OPTIONS).map(({ info }) => info.selector)).toEqual(['#hash']);
+  });
+
   it('leaves out buttons that another browser extension injected into the page', () => {
     render('<button id="next">Next</button><grammarly-extension id="g"></grammarly-extension>');
     $('#g').attachShadow({ mode: 'open' }).innerHTML = '<button>Rewrite with Grammarly</button>';
@@ -157,6 +192,36 @@ describe('findStepTitle', () => {
     render('<p>No headings here</p>');
     expect(findStepTitle(document, ALWAYS_HAS_BOX)).toBeUndefined();
   });
+});
+
+describe('looksLikeFinalStep', () => {
+  const stepper = (current: number) =>
+    `<ol>${['Personal', 'Contact', 'Review']
+      .map((name, index) => `<li role="tab" aria-selected="${index === current}">${name}</li>`)
+      .join('')}</ol>`;
+
+  it('recognises the last item of a stepper', () => {
+    render(stepper(2).replace('Review', 'Extras'));
+    expect(looksLikeFinalStep(document, ALWAYS_HAS_BOX)).toBe(true);
+    render(stepper(1));
+    expect(looksLikeFinalStep(document, ALWAYS_HAS_BOX)).toBe(false);
+  });
+
+  it.each(['Review your application', 'Revisão', 'Confirmação dos dados', 'Récapitulatif'])(
+    'recognises a step titled "%s"',
+    (title) => {
+      render(`<h1>${title}</h1>`);
+      expect(looksLikeFinalStep(document, ALWAYS_HAS_BOX)).toBe(true);
+    },
+  );
+
+  it.each(['Work experience', 'Professional summary', 'Preview of benefits'])(
+    'does not take "%s" for the final review',
+    (title) => {
+      render(`<h1>${title}</h1><ol><li aria-current="step">Only step</li></ol>`);
+      expect(looksLikeFinalStep(document, ALWAYS_HAS_BOX)).toBe(false);
+    },
+  );
 });
 
 describe('findFieldError', () => {

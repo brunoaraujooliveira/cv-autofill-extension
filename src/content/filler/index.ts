@@ -6,6 +6,7 @@ import { fillCombobox, type ComboboxContext } from './combobox';
 import { fillDate } from './date';
 import { attachFile } from './file';
 import { fillSelect, fillTextControl } from './native';
+import { errorMessage } from '../../shared/text';
 
 export interface FillContext {
   delayMs: number;
@@ -13,6 +14,8 @@ export interface FillContext {
   combobox?: ComboboxContext;
   /** The applicant's resume file, when one is stored, for upload fields. */
   file?: UploadFile;
+  /** Asked before each field; filling ends there once it says yes. */
+  shouldStop?: () => boolean;
 }
 
 type Value = NonNullable<FieldDecision['value']>;
@@ -77,7 +80,7 @@ async function applyValue(field: ExtractedField, value: Value, context: FillCont
       try {
         attachFile(element as HTMLInputElement, context.file);
       } catch (error) {
-        throw new ManualStepRequired(error instanceof Error ? error.message : String(error));
+        throw new ManualStepRequired(errorMessage(error));
       }
       return;
     default:
@@ -95,6 +98,7 @@ export async function fillFields(
   const results: FillResult[] = [];
 
   for (const decision of decisions) {
+    if (context.shouldStop?.()) break;
     if (decision.action !== 'fill' || decision.value === undefined) continue;
     const field = fields.get(decision.fieldId);
     try {
@@ -105,7 +109,7 @@ export async function fillFields(
       results.push({
         fieldId: decision.fieldId,
         status: error instanceof ManualStepRequired ? 'pending_manual' : 'failed',
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     await sleep(context.delayMs);

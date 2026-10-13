@@ -3,7 +3,7 @@ import { queryAllDeep } from './dom';
 import { extractFields, type ExtractedField, type ExtractOptions } from './extractor';
 import { hasLayoutBox, isVisible } from './extractor/visibility';
 import { findButtons } from './navigator/buttons';
-import { findStepTitle } from './navigator/step-id';
+import { findStepTitle, looksLikeFinalStep } from './navigator/step-id';
 import { findRepeatables } from './repeater';
 
 /** A frame's description plus the live elements its fields and buttons refer to. */
@@ -46,6 +46,7 @@ export async function capturePage(
       buttons: buttons.map(({ info }) => info),
       repeatables: findRepeatables(buttons, options.hasBox),
       iframeOrigins: visibleIframeOrigins(root, options),
+      looksFinal: looksLikeFinalStep(root, options.hasBox),
     },
   };
 }

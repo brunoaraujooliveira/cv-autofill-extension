@@ -25,6 +25,8 @@ export interface TabGateway {
   ): Promise<FillResult[]>;
   advance(tabId: number, button: ButtonInfo): Promise<AdvanceOutcome>;
   addBlock(tabId: number, repeatable: RepeatableSection): Promise<boolean>;
+  /** Tells the page to stop filling before its next field. Never fails. */
+  cancel(tabId: number): Promise<void>;
 }
 
 export class InjectionError extends Error {}

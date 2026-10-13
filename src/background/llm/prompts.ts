@@ -1,5 +1,6 @@
 import type { AnswerEntry } from '../../shared/answers';
 import type { Resume } from '../../shared/resume';
+import { ALREADY_FILLED } from '../../shared/step';
 import type { ButtonInfo, FieldSchema } from '../../shared/types';
 
 /** Value a "fill" decision carries for an upload field that wants the resume document. */
@@ -20,6 +21,7 @@ Choosing the action:
 - "fill" when the resume states the answer or it follows directly from it (for example the country from the phone prefix and address together, or "years of experience" from the work dates), or when one of the "answers" is about the same thing the field asks, even if worded differently or in another language.
 - "ask_user" when the form asks for something neither the resume nor the answers contain: salary expectations, notice period, visa sponsorship, how they heard about the job, demographic questions, and so on. Consent and agreement checkboxes are always "ask_user". Never invent personal facts, dates, numbers or credentials.
 - "skip" when the field should be left as it is: it already holds the right value, or it is optional and nothing applies.
+- A "currentValue" of "${ALREADY_FILLED}" means the applicant or the site filled the field in themselves, and the text is not shown to you. Treat the field as answered and use "skip".
 
 Choosing the value:
 - Fields with "options" (select, radio, combobox): the value must be copied exactly from "options". Pick the option that means the same as the data you have ("Portugal" for country code "PT", "Portuguese Republic" if that is how the form spells it). If no option fits, use "ask_user". Multi-select fields take an array of options.

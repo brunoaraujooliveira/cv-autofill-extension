@@ -32,12 +32,15 @@ export interface ExtractOptions {
 
 const RADIO_CONTAINERS = 'fieldset, [role="radiogroup"]';
 
+/** Native inputs that sites routinely hide behind a styled label the user clicks instead. */
+const INPUTS_SHOWN_BY_THEIR_LABEL = ['radio', 'checkbox', 'file'];
+
 function isControlVisible(control: HTMLElement, label: ResolvedLabel | null, hasBox: BoxProbe) {
   if (isVisible(control, hasBox)) return true;
-  // Custom-styled radios and checkboxes hide the native input and show only its label.
-  const isChoice =
-    control instanceof HTMLInputElement && ['radio', 'checkbox'].includes(control.type);
-  return isChoice && label?.element !== undefined && isVisible(label.element, hasBox);
+  // The label is then what the user sees and uses, so it is the label that has to be visible.
+  const shownByLabel =
+    control instanceof HTMLInputElement && INPUTS_SHOWN_BY_THEIR_LABEL.includes(control.type);
+  return shownByLabel && label?.element !== undefined && isVisible(label.element, hasBox);
 }
 
 function isRequired(control: Element, label: ResolvedLabel | null): boolean {

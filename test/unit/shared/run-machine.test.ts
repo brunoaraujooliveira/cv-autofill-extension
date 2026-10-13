@@ -29,6 +29,7 @@ const ALL_EVENTS: RunEvent[] = [
   'RECHECK',
   'STUCK',
   'FINISH',
+  'CANCEL',
   'FAIL',
 ];
 const ALL_PHASES: RunPhase[] = [
@@ -86,6 +87,28 @@ describe('run state machine', () => {
     expect(walk('ADVANCING', ['STUCK'])).toBe('WAITING_USER_REVIEW');
   });
 
+  it('can be stopped from any working phase, landing on the user review', () => {
+    for (const phase of BUSY_PHASES)
+      expect(transition(phase, 'CANCEL')).toBe('WAITING_USER_REVIEW');
+    expect(canTransition('FINAL_REVIEW', 'CANCEL')).toBe(false);
+  });
+
+  it('treats a step the page presents as its last one as final, whatever its buttons say', () => {
+    const looksFinal: StepSchema = {
+      signature: 's',
+      url: 'https://jobs.example.com',
+      fields: [],
+      buttons: [
+        { frameId: 0, selector: '#go', text: 'Continue', kind: 'advance', disabled: false },
+      ],
+      repeatables: [],
+      blockedOrigins: [],
+      looksFinal: true,
+    };
+    expect(isFinalStep(looksFinal)).toBe(true);
+    expect(isFinalStep({ ...looksFinal, looksFinal: false })).toBe(false);
+  });
+
   it('can fail from any working phase and be started again', () => {
     for (const phase of BUSY_PHASES) expect(transition(phase, 'FAIL')).toBe('ERROR');
     for (const phase of ['ERROR', 'DONE', 'FINAL_REVIEW', 'WAITING_USER_REVIEW', 'IDLE'] as const) {
@@ -121,6 +144,7 @@ describe('step helpers', () => {
     buttons: kinds.map(button),
     repeatables: [],
     blockedOrigins: [],
+    looksFinal: false,
   });
   const field = (overrides: Partial<FieldSchema>): FieldSchema => ({
     id: 'f',

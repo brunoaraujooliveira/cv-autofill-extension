@@ -3,31 +3,42 @@ import type { Logger } from '../shared/logger';
 import type { Resume } from '../shared/resume';
 import { BUSY_PHASES, transition, type RunEvent } from '../shared/run-machine';
 import type { Settings } from '../shared/settings';
-import { hasAdvanceButton, isEmptyValue, isFinalStep } from '../shared/step';
-import { findOptionIndex, isFormatHint } from '../shared/text';
+import { askUser, hasAdvanceButton, isEmptyValue, isFinalStep } from '../shared/step';
+import { isNamingLabel } from '../shared/text';
 import type {
   BlockShortfall,
   ButtonInfo,
   FieldDecision,
   FieldSchema,
+  FieldValue,
   FillResult,
   RepeatableSection,
-  RunError,
-  RunErrorCode,
   RunNotice,
   RunState,
   StepSchema,
   UploadFile,
 } from '../shared/types';
-import { LlmError, type LlmErrorKind } from './llm/client';
 import type { LlmCredentials, Mapper } from './llm/mapper';
 import type { AnswerBank } from './storage/answer-bank';
 import type { MappingCache } from './storage/mapping-cache';
 import type { ResumeFileRepository } from './storage/resume-file';
 import type { ResumeRepository } from './storage/resume';
 import type { SettingsRepository } from './storage/settings';
+import {
+  canAutoAdvance,
+  hideApplicantText,
+  holdsTypedText,
+  hostOf,
+  isValidAnswer,
+  MAX_FILLS_PER_FIELD,
+  needsRefill,
+  RunCancelled,
+  RunFailure,
+  toRunError,
+  wasFilledByExtension,
+} from './run-rules';
 import { runKey, type StateStore } from './storage/state-store';
-import { InjectionError, type TabGateway } from './tab-gateway';
+import type { TabGateway } from './tab-gateway';
 
 export interface OrchestratorDependencies {
   settings: SettingsRepository;
@@ -41,6 +52,10 @@ export interface OrchestratorDependencies {
   logger: Logger;
   onChange: (state: RunState) => void;
   now?: () => number;
+  /** Keeps the service worker from being put to sleep while a run works; returns how to stop. */
+  keepAwake?: () => () => void;
+  /** Gives back the access to other sites that was granted for embedded frames. */
+  revokeSiteAccess?: () => Promise<void>;
 }
 
 export interface StartOptions {
@@ -57,23 +72,10 @@ export interface StartOptions {
 interface StepOptions {
   allowAutoAdvance: boolean;
   redo?: boolean;
+  /** Steps the run may still leave on its own before it has to stop for the user. */
+  autoSteps?: number;
 }
 
-/** Field types whose value is typed text, which can be emptied without choosing anything else. */
-const TYPED_FIELDS: ReadonlySet<FieldSchema['type']> = new Set([
-  'text',
-  'email',
-  'tel',
-  'number',
-  'date',
-  'textarea',
-  'combobox',
-]);
-
-type AnswerValue = NonNullable<FieldDecision['value']>;
-
-/** Fills of one field before giving up on correcting it: the first try plus two corrections. */
-const MAX_FILLS_PER_FIELD = 3;
 /**
  * Safety limit on passes over one step. What really ends the passes is running out of work:
  * corrections are capped per field and blocks by the size of the resume. It has to exceed the
@@ -81,32 +83,8 @@ const MAX_FILLS_PER_FIELD = 3;
  */
 const MAX_ROUNDS = 40;
 const MAX_BLOCKS_PER_SECTION = 15;
-const AUTO_ADVANCE_MIN_CONFIDENCE = 0.8;
-
-const LLM_ERROR_CODES: Record<LlmErrorKind, RunErrorCode> = {
-  auth: 'llm_auth',
-  rate_limit: 'llm_rate_limit',
-  unavailable: 'llm_unavailable',
-  network: 'llm_network',
-  refusal: 'llm_refusal',
-  invalid_response: 'llm_invalid_response',
-  bad_request: 'llm_bad_request',
-};
-
-/** Failure with a code the side panel knows how to explain. */
-class RunFailure extends Error {
-  constructor(readonly code: RunErrorCode) {
-    super(code);
-  }
-}
-
-function toRunError(error: unknown): RunError {
-  if (error instanceof RunFailure) return { code: error.code };
-  if (error instanceof InjectionError) return { code: 'injection_failed', detail: error.message };
-  if (error instanceof LlmError)
-    return { code: LLM_ERROR_CODES[error.kind], detail: error.message };
-  return { code: 'unexpected', detail: error instanceof Error ? error.message : String(error) };
-}
+/** Steps one run may walk through unattended. A form that never ends cannot spend without limit. */
+const MAX_AUTO_STEPS = 20;
 
 /** Everything about the applicant a step needs, loaded once per step. */
 interface ApplicantContext {
@@ -117,47 +95,6 @@ interface ApplicantContext {
   file: UploadFile | null;
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
-/** A label that says what is asked, so an answer to it can be recognized on another form. */
-function isRecognizableLabel(label: string): boolean {
-  return label.trim() !== '' && !isFormatHint(label);
-}
-
-function askUser(fieldId: string, reason: string): FieldDecision {
-  return { fieldId, action: 'ask_user', confidence: 0, reason };
-}
-
-/** Whether the page lost a value that was filled before (after a reload, for instance). */
-function needsRefill(field: FieldSchema, decision: FieldDecision): boolean {
-  if (decision.action !== 'fill' || field.error) return false;
-  return typeof decision.value === 'boolean'
-    ? field.value !== decision.value
-    : isEmptyValue(field.value);
-}
-
-function canAutoAdvance(state: RunState): boolean {
-  const decisionsAreSafe = state.decisions.every(
-    (decision) =>
-      decision.action === 'skip' ||
-      (decision.action === 'fill' &&
-        !decision.needsReview &&
-        decision.confidence >= AUTO_ADVANCE_MIN_CONFIDENCE),
-  );
-  return (
-    decisionsAreSafe &&
-    state.results.every((result) => result.status === 'filled') &&
-    state.step?.blockedOrigins.length === 0 &&
-    !state.notice
-  );
-}
-
 /**
  * Drives an application one step at a time: read the step, decide each field, fill, check the
  * result, wait for the user, move on. It stops for good at the step whose way forward is a
@@ -166,6 +103,7 @@ function canAutoAdvance(state: RunState): boolean {
 export class Orchestrator {
   private readonly states = new Map<number, RunState>();
   private readonly running = new Map<number, Promise<void>>();
+  private readonly cancelling = new Set<number>();
   private readonly now: () => number;
 
   constructor(private readonly deps: OrchestratorDependencies) {
@@ -173,7 +111,13 @@ export class Orchestrator {
   }
 
   async get(tabId: number): Promise<RunState | null> {
-    return this.states.get(tabId) ?? (await this.deps.states.loadByTab(tabId));
+    const live = this.states.get(tabId);
+    if (live) return live;
+    const stored = await this.deps.states.loadByTab(tabId);
+    // Stored as working but nothing is running: the service worker was restarted mid-run.
+    return stored && BUSY_PHASES.has(stored.phase)
+      ? { ...stored, phase: 'ERROR', error: { code: 'interrupted' } }
+      : stored;
   }
 
   /** Reads and fills the step on screen, resuming the application if it was seen before. */
@@ -184,7 +128,12 @@ export class Orchestrator {
     const url = await this.deps.tabs.url(tabId).catch(() => '');
     // Without an address to go by, the run can only be told apart by its tab.
     const key = url ? runKey(url) : `tab:${tabId}`;
-    const known = current ?? (await this.deps.states.loadByKey(key));
+    // The tab's run only carries on if the tab is still on that application: where it started,
+    // or the step it read last. Anything else is another application and starts from nothing.
+    const sameApplication =
+      current !== null &&
+      (current.key === key || (current.step !== undefined && runKey(current.step.url) === key));
+    const known = sameApplication ? current : await this.deps.states.loadByKey(key);
     const base: RunState =
       known && !options.fresh
         ? { ...known, tabId }
@@ -212,23 +161,33 @@ export class Orchestrator {
       ...(jobDescription ? { jobDescription } : {}),
     });
     const redo = options.redo === true && !options.fresh;
-    this.launch(tabId, () => this.processStep(tabId, { allowAutoAdvance: true, redo }));
+    this.launch(tabId, () =>
+      this.processStep(tabId, { allowAutoAdvance: true, redo, autoSteps: MAX_AUTO_STEPS }),
+    );
     return state;
   }
 
   /** The user reviewed the step: remember it and move to the next one. */
   async confirm(tabId: number): Promise<RunState> {
     this.move(await this.loaded(tabId), 'CONFIRM');
-    this.launch(tabId, () => this.advance(tabId, true));
+    this.launch(tabId, () => this.advance(tabId, MAX_AUTO_STEPS));
     return this.current(tabId);
   }
 
+  /** Stops a run at its next checkpoint, leaving the page as it is for the user to review. */
+  async cancel(tabId: number): Promise<RunState | null> {
+    if (!this.running.has(tabId)) return this.get(tabId);
+    this.cancelling.add(tabId);
+    await this.deps.tabs.cancel(tabId);
+    return this.get(tabId);
+  }
+
   /** Fills a field with what the user typed in the side panel and keeps the answer for next time. */
-  async answer(tabId: number, fieldId: string, value: AnswerValue): Promise<RunState> {
+  async answer(tabId: number, fieldId: string, value: FieldValue): Promise<RunState> {
     const state = await this.loaded(tabId);
     const field = state.step?.fields.find((candidate) => candidate.id === fieldId);
     if (!field || !state.step) throw new Error('Unknown field');
-    if (BUSY_PHASES.has(state.phase)) throw new Error('The run is busy');
+    if (BUSY_PHASES.has(state.phase) || this.running.has(tabId)) throw new Error('The run is busy');
     if (!isValidAnswer(field, value)) throw new Error('That value does not fit the field');
 
     // Consent boxes and uploads are answered per form; everything else is worth remembering.
@@ -236,7 +195,7 @@ export class Orchestrator {
       field.type !== 'checkbox' &&
       field.type !== 'file' &&
       typeof value !== 'boolean' &&
-      isRecognizableLabel(field.label);
+      isNamingLabel(field.label);
     const entry = reusable ? await this.deps.answers.remember(field.label, value) : null;
     const decision: FieldDecision = {
       fieldId,
@@ -262,6 +221,7 @@ export class Orchestrator {
     const state = await this.loaded(tabId);
     transition(state.phase, 'FINISH');
     await this.rememberStep(state);
+    await this.deps.revokeSiteAccess?.();
     return this.move(state, 'FINISH');
   }
 
@@ -275,7 +235,9 @@ export class Orchestrator {
 
   async onTabClosed(tabId: number): Promise<void> {
     this.states.delete(tabId);
+    this.cancelling.add(tabId);
     await this.deps.states.detachTabs(tabId);
+    await this.deps.revokeSiteAccess?.();
   }
 
   /** Resolves when the run of a tab stops making progress on its own. */
@@ -286,7 +248,8 @@ export class Orchestrator {
   // --- one step -------------------------------------------------------------------------------
 
   private async processStep(tabId: number, options: StepOptions): Promise<void> {
-    const { allowAutoAdvance, redo = false } = options;
+    const { allowAutoAdvance, redo = false, autoSteps = 0 } = options;
+    this.checkpoint(tabId);
     const context = await this.loadContext();
     const onScreen = await this.deps.tabs.extract(tabId, false);
     let step = await this.expandRepeatables(
@@ -305,13 +268,16 @@ export class Orchestrator {
 
     this.move(this.current(tabId), 'FIELDS_FOUND', { step });
     for (let round = 1; ; round += 1) {
+      this.checkpoint(tabId);
       const toFill = await this.decide(tabId, step, context, !redo);
       this.move(this.current(tabId), 'MAPPED');
+      this.checkpoint(tabId);
 
       const filled = toFill.length
         ? await this.deps.tabs.fill(tabId, step, toFill, context.settings.fillDelayMs, context.file)
         : [];
       this.record(tabId, [], filled);
+      this.checkpoint(tabId);
       this.move(this.current(tabId), 'FILLED');
 
       step = await this.deps.tabs.extract(tabId, true);
@@ -328,15 +294,18 @@ export class Orchestrator {
       decisions: this.decisionsFor(tabId, step),
     });
 
-    if (
+    const mayLeaveUnattended =
       allowAutoAdvance &&
       context.settings.autoAdvance &&
       state.phase === 'WAITING_USER_REVIEW' &&
-      canAutoAdvance(state)
-    ) {
-      this.move(state, 'CONFIRM');
-      await this.advance(tabId, true);
+      canAutoAdvance(state);
+    if (!mayLeaveUnattended) return;
+    if (autoSteps <= 0) {
+      this.publish({ ...state, notice: { code: 'auto_limit' } });
+      return;
     }
+    this.move(state, 'CONFIRM');
+    await this.advance(tabId, autoSteps - 1);
   }
 
   /**
@@ -351,9 +320,8 @@ export class Orchestrator {
   ): Promise<StepSchema> {
     const state = this.current(tabId);
     const ownText = step.fields.filter((field) => {
-      const prior = state.decided[field.id];
-      const typedByExtension = prior?.action === 'fill' && prior.origin !== 'user';
-      return typedByExtension && TYPED_FIELDS.has(field.type) && !isEmptyValue(field.value);
+      const typedByExtension = wasFilledByExtension(state.decided[field.id]);
+      return typedByExtension && holdsTypedText(field) && !isEmptyValue(field.value);
     });
 
     const onStep = new Set(step.fields.map((field) => field.id));
@@ -457,7 +425,7 @@ export class Orchestrator {
     const mapped = forModel.length
       ? await this.deps.mapper.map(
           {
-            fields: forModel,
+            fields: hideApplicantText(forModel, state.decided),
             ...data,
             ...(state.jobDescription ? { jobDescription: state.jobDescription } : {}),
           },
@@ -515,13 +483,14 @@ export class Orchestrator {
 
   // --- moving between steps -------------------------------------------------------------------
 
-  private async advance(tabId: number, mayRecheck: boolean): Promise<void> {
+  private async advance(tabId: number, autoSteps: number): Promise<void> {
+    this.checkpoint(tabId);
     const state = this.current(tabId);
     const step = state.step;
     if (!step) throw new Error('No step to advance from');
     await this.rememberStep(state);
 
-    const button = await this.pickAdvanceButton(step);
+    const button = isFinalStep(step) ? null : await this.pickAdvanceButton(step);
     if (!button) {
       if (isFinalStep(step)) this.move(state, 'FINAL_STEP');
       else this.move(state, 'STUCK', { notice: { code: 'no_next_button' } });
@@ -538,17 +507,16 @@ export class Orchestrator {
         results: [],
         added: {},
       });
-      await this.processStep(tabId, { allowAutoAdvance: true });
-    } else if (mayRecheck) {
-      await this.recheckBlockedStep(tabId, outcome);
+      await this.processStep(tabId, { allowAutoAdvance: true, autoSteps });
     } else {
-      this.move(state, 'STUCK', { notice: this.blockedNotice(step, outcome) });
+      await this.recheckBlockedStep(tabId, outcome);
     }
   }
 
   /**
-   * The step did not move: read it again (filling may have revealed new fields or errors) and
-   * try once more if that changed anything. Otherwise tell the user what seems to be missing.
+   * The step did not move: read it again, since filling may have revealed new fields or errors.
+   * Whatever that fills is new to the user, so the run stops for review instead of clicking
+   * again; when nothing changed, it says what seems to be missing.
    */
   private async recheckBlockedStep(
     tabId: number,
@@ -559,12 +527,13 @@ export class Orchestrator {
 
     const state = this.current(tabId);
     if (state.phase !== 'WAITING_USER_REVIEW' || !state.step) return;
-    if (state.results.some((result) => result.status === 'filled')) {
-      this.move(state, 'CONFIRM');
-      await this.advance(tabId, false);
-    } else {
-      this.publish({ ...state, notice: this.blockedNotice(state.step, outcome) });
-    }
+    const filledSomethingNew = state.results.some((result) => result.status === 'filled');
+    this.publish({
+      ...state,
+      notice: filledSomethingNew
+        ? { code: 'review_new_fields' }
+        : this.blockedNotice(state.step, outcome),
+    });
   }
 
   private blockedNotice(step: StepSchema, outcome: 'disabled' | 'unchanged'): RunNotice {
@@ -576,20 +545,14 @@ export class Orchestrator {
       : { code: 'step_unchanged' };
   }
 
-  /** The button to click: the obvious one, or the model's pick when the texts do not settle it. */
+  /**
+   * The button to click. Only buttons whose own text says "next" are candidates; when there
+   * are several, the model picks among those. A button of unknown purpose is never clicked,
+   * whoever suggests it: without a recognisable "next", the user moves on by hand.
+   */
   private async pickAdvanceButton(step: StepSchema): Promise<ButtonInfo | null> {
-    const advance = step.buttons.filter((button) => button.kind === 'advance');
-    if (advance.length === 1) return advance[0] ?? null;
-
-    // Buttons that may submit are never offered as candidates.
-    const hasSubmit = step.buttons.some((button) => button.kind === 'submit');
-    const candidates =
-      advance.length > 1
-        ? advance
-        : hasSubmit
-          ? []
-          : step.buttons.filter((button) => button.kind === 'other');
-    if (candidates.length === 0) return null;
+    const candidates = step.buttons.filter((button) => button.kind === 'advance');
+    if (candidates.length <= 1) return candidates[0] ?? null;
     const { credentials } = await this.loadContext();
     return this.deps.mapper.chooseAdvanceButton(candidates, credentials);
   }
@@ -627,14 +590,32 @@ export class Orchestrator {
   }
 
   private launch(tabId: number, task: () => Promise<void>): void {
+    this.cancelling.delete(tabId);
+    const stopKeepingAwake = this.deps.keepAwake?.();
     const run = task()
       .catch((error: unknown) => {
+        const state = this.states.get(tabId);
+        // The tab is gone, and its run with it: there is nobody left to tell.
+        if (!state) return;
+        if (error instanceof RunCancelled) {
+          this.move(state, 'CANCEL', { notice: { code: 'cancelled' } });
+          return;
+        }
         const runError = toRunError(error);
         this.deps.logger.error('Run failed', runError);
-        this.publish({ ...this.current(tabId), phase: 'ERROR', error: runError });
+        this.publish({ ...state, phase: 'ERROR', error: runError });
       })
-      .finally(() => this.running.delete(tabId));
+      .finally(() => {
+        stopKeepingAwake?.();
+        this.cancelling.delete(tabId);
+        this.running.delete(tabId);
+      });
     this.running.set(tabId, run);
+  }
+
+  /** Where a run stops if the user asked it to. Placed before each thing that costs or changes. */
+  private checkpoint(tabId: number): void {
+    if (this.cancelling.has(tabId)) throw new RunCancelled();
   }
 
   /** Adds decisions and fill results to the run, keeping the per-step view in sync. */
@@ -702,16 +683,4 @@ export class Orchestrator {
     this.deps.onChange(stamped);
     return stamped;
   }
-}
-
-/** Checks a value typed in the side panel against what the field can take. */
-export function isValidAnswer(field: FieldSchema, value: AnswerValue): boolean {
-  if (field.type === 'checkbox') return typeof value === 'boolean';
-  if (typeof value === 'boolean') return false;
-  const values = Array.isArray(value) ? value : [value];
-  if (values.some((item) => item.trim() === '')) return false;
-  return (
-    !field.options?.length ||
-    values.every((item) => findOptionIndex(field.options ?? [], item) !== -1)
-  );
 }

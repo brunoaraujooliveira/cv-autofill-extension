@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { buildProviderHeaders, PROVIDER_CONFIG } from './provider-config';
+import { errorMessage } from '../../shared/text';
 
 export type LlmErrorKind =
   | 'auth'
@@ -113,9 +114,7 @@ export class HttpLlmClient implements LlmClient {
         return parseAnswer(await response.json().catch(() => null));
       } catch (error) {
         const llmError =
-          error instanceof LlmError
-            ? error
-            : new LlmError('network', error instanceof Error ? error.message : String(error));
+          error instanceof LlmError ? error : new LlmError('network', errorMessage(error));
         if (!RETRYABLE.has(llmError.kind) || attempt >= this.maxAttempts) throw llmError;
         await this.sleep(retryDelayMs(response, attempt));
       }

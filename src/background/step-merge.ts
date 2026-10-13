@@ -26,5 +26,6 @@ export function mergeSnapshots(frames: readonly CapturedFrame[]): StepSchema {
     buttons: ordered.flatMap((frame) => frame.snapshot.buttons),
     repeatables: ordered.flatMap((frame) => frame.snapshot.repeatables),
     blockedOrigins: [...embedded].filter((origin) => !readable.has(origin)).sort(),
+    looksFinal: ordered.some((frame) => frame.snapshot.looksFinal),
   };
 }

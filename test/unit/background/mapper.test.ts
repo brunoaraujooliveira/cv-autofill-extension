@@ -285,6 +285,38 @@ describe('Mapper', () => {
     ]);
   });
 
+  it.each([
+    'I agree to the terms and conditions',
+    'Li e aceito a política de privacidade',
+    'Autorizo o tratamento dos meus dados (RGPD)',
+    'Ich stimme der Datenschutzerklärung zu',
+    "J'accepte les conditions",
+  ])('never ticks the consent box "%s" for the applicant', async (label) => {
+    const fields = [
+      field('consent', { type: 'checkbox', label }),
+      field('remote', { type: 'checkbox', label: 'Open to remote work' }),
+    ];
+    const answer = {
+      decisions: [wire('consent', { value: true }), wire('remote', { value: true })],
+    };
+    const { mapper } = createMapper(answer, answer);
+    const decisions = await mapper.map({ fields, resume: RESUME }, CREDENTIALS);
+
+    expect(decisions[0]).toMatchObject({ fieldId: 'consent', action: 'ask_user' });
+    expect(decisions[1]).toMatchObject({ fieldId: 'remote', action: 'fill', value: true });
+  });
+
+  it('lets the model leave a consent box unticked', async () => {
+    const fields = [field('consent', { type: 'checkbox', label: 'I agree to the terms' })];
+    const { mapper, completeJson } = createMapper({
+      decisions: [wire('consent', { value: false })],
+    });
+    const decisions = await mapper.map({ fields, resume: RESUME }, CREDENTIALS);
+
+    expect(decisions[0]).toMatchObject({ action: 'fill', value: false });
+    expect(completeJson).toHaveBeenCalledOnce();
+  });
+
   describe('chooseAdvanceButton', () => {
     const buttons = ['Back', 'Onward'].map((text) => ({
       frameId: 0,

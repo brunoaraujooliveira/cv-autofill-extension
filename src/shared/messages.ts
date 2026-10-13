@@ -4,13 +4,12 @@ import type { SettingsPatch, SettingsView } from './settings';
 import type {
   AdvanceOutcome,
   FieldDecision,
+  FieldValue,
   FillResult,
   FrameSnapshot,
   RunState,
   UploadFile,
 } from './types';
-
-type AnswerValue = NonNullable<FieldDecision['value']>;
 
 /** Requests the UI pages send to the service worker, with their reply types. */
 export interface RequestMap {
@@ -38,10 +37,12 @@ export interface RequestMap {
   /** The user reviewed the step: move to the next one. */
   'run/confirm': { payload: { tabId: number }; reply: RunState };
   'run/answer': {
-    payload: { tabId: number; fieldId: string; value: AnswerValue };
+    payload: { tabId: number; fieldId: string; value: FieldValue };
     reply: RunState;
   };
   'run/finish': { payload: { tabId: number }; reply: RunState };
+  /** Stops a run at its next checkpoint. */
+  'run/cancel': { payload: { tabId: number }; reply: RunState | null };
 }
 
 export type RequestType = keyof RequestMap;
@@ -65,6 +66,8 @@ export interface ContentRequestMap {
   };
   'content/advance': { payload: { selector: string }; reply: AdvanceOutcome };
   'content/add-block': { payload: { selector: string }; reply: boolean };
+  /** Stops a fill in progress before its next field. */
+  'content/cancel': { payload: undefined; reply: null };
 }
 
 export type ContentRequestType = keyof ContentRequestMap;
@@ -91,6 +94,7 @@ const REQUEST_TYPES: readonly string[] = [
   'run/confirm',
   'run/answer',
   'run/finish',
+  'run/cancel',
 ] satisfies RequestType[];
 
 const NOTIFICATION_TYPES: readonly string[] = [
@@ -103,6 +107,7 @@ const CONTENT_REQUEST_TYPES: readonly string[] = [
   'content/fill',
   'content/advance',
   'content/add-block',
+  'content/cancel',
 ] satisfies ContentRequestType[];
 
 function hasTypeIn(message: unknown, types: readonly string[]): boolean {

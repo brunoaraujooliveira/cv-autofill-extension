@@ -30,6 +30,8 @@ test.describe('fixture 01: plain HTML form', () => {
     // Invisible and hidden fields are never touched.
     await expect(form.locator('#trap')).toHaveValue('');
     await expect(form.locator('[name="csrf"]')).toHaveValue('token-123');
+    await expect(form.locator('[name="transparent"]')).toHaveValue('');
+    await expect(form.locator('[name="offscreen"]')).toHaveValue('');
   });
 
   test('shows each field in the side panel with its outcome', async ({ openFixture }) => {

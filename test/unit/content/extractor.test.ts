@@ -58,6 +58,21 @@ describe('extractFields', () => {
     expect((await extract()).map((field) => field.schema.label)).toEqual(['Shown']);
   });
 
+  it('skips fields the user cannot see, whatever they are labelled', async () => {
+    render(`
+      <label for="salary">Expected salary</label><input id="salary" style="opacity:0" />
+      <div style="opacity:0"><label for="visa">Visa status</label><input id="visa" /></div>
+      <label for="shown">Shown</label><input id="shown" />`);
+    expect((await extract()).map((field) => field.schema.label)).toEqual(['Shown']);
+  });
+
+  it('takes an upload hidden behind its label only when that label is visible', async () => {
+    render(`
+      <label for="cv">Upload your resume</label><input id="cv" type="file" style="display:none" />
+      <label for="trap" style="opacity:0">Resume</label><input id="trap" type="file" style="display:none" />`);
+    expect((await extract()).map((field) => field.schema.label)).toEqual(['Upload your resume']);
+  });
+
   it('reads select options by their text and leaves out the empty placeholder option', async () => {
     render(`
       <label for="country">Country</label>
