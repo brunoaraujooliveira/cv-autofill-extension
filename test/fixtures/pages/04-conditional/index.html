@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 04 — conditional field</title>
+  </head>
+  <body>
+    <h1>Availability</h1>
+    <form id="application">
+      <p>
+        <label for="employed">Are you currently employed? *</label>
+        <select id="employed" name="employed" required>
+          <option value="">Select…</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </p>
+      <div id="follow-up"></div>
+      <p><button type="submit">Submit application</button></p>
+    </form>
+    <pre id="result"></pre>
+
+    <script type="module">
+      const form = document.querySelector('#application');
+      const followUp = document.querySelector('#follow-up');
+      // The notice period question only exists after the applicant says they are employed.
+      document.querySelector('#employed').addEventListener('change', (event) => {
+        followUp.innerHTML =
+          event.target.value === 'yes'
+            ? '<label for="notice">Notice period *</label> <input id="notice" name="noticePeriod" required />'
+            : '';
+      });
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.querySelector('#result').textContent = JSON.stringify(
+          Object.fromEntries(new FormData(form)),
+        );
+      });
+    </script>
+  </body>
+</html>

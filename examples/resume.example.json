@@ -1,0 +1,120 @@
+{
+  "basics": {
+    "name": "Ana Example",
+    "label": "Senior Java / Full Stack Engineer",
+    "email": "ana.example@example.com",
+    "phone": "+351 910 000 000",
+    "url": "https://ana.example.com",
+    "summary": "Software engineer with 10+ years building distributed backend systems in Java and Spring, plus React front ends. Experienced in leading migrations to event-driven architectures and mentoring teams.",
+    "location": {
+      "address": "Rua de Exemplo 100",
+      "postalCode": "1000-001",
+      "city": "Lisbon",
+      "region": "Lisbon",
+      "countryCode": "PT"
+    },
+    "profiles": [
+      {
+        "network": "LinkedIn",
+        "username": "ana-example",
+        "url": "https://www.linkedin.com/in/ana-example"
+      },
+      { "network": "GitHub", "username": "ana-example", "url": "https://github.com/ana-example" }
+    ]
+  },
+  "work": [
+    {
+      "name": "Acme Payments",
+      "position": "Senior Software Engineer",
+      "location": "Lisbon, Portugal",
+      "url": "https://acme.example.com",
+      "startDate": "2021-03",
+      "summary": "Tech lead of the settlement platform, processing 4M transactions per day.",
+      "highlights": [
+        "Led the migration from a monolith to 14 Spring Boot services on Kubernetes",
+        "Cut settlement latency from 40 minutes to under 5 with Kafka streaming",
+        "Mentored six engineers and ran the backend hiring loop"
+      ]
+    },
+    {
+      "name": "Globex Retail",
+      "position": "Full Stack Engineer",
+      "location": "Porto, Portugal",
+      "url": "https://globex.example.com",
+      "startDate": "2016-06",
+      "endDate": "2021-02",
+      "summary": "Built the order management back office used by 300 stores.",
+      "highlights": [
+        "Designed REST APIs in Java 11 and Spring Boot backed by PostgreSQL",
+        "Delivered the React back office and its component library",
+        "Introduced contract testing, reducing integration incidents by 60%"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Example University",
+      "url": "https://university.example.com",
+      "area": "Computer Science",
+      "studyType": "Bachelor",
+      "startDate": "2010-09",
+      "endDate": "2014-07",
+      "score": "16/20",
+      "courses": ["Distributed Systems", "Databases", "Software Engineering"]
+    }
+  ],
+  "certificates": [
+    {
+      "name": "Certified Kubernetes Application Developer",
+      "date": "2023-05-12",
+      "issuer": "Cloud Native Computing Foundation",
+      "url": "https://certs.example.com/ckad/ABC-123"
+    }
+  ],
+  "skills": [
+    {
+      "name": "Backend",
+      "level": "Expert",
+      "keywords": ["Java", "Spring Boot", "Kafka", "PostgreSQL"]
+    },
+    { "name": "Frontend", "level": "Advanced", "keywords": ["TypeScript", "React", "CSS"] },
+    { "name": "Cloud", "level": "Advanced", "keywords": ["AWS", "Kubernetes", "Terraform"] }
+  ],
+  "languages": [
+    { "language": "Portuguese", "fluency": "Native speaker" },
+    { "language": "English", "fluency": "Fluent (C1)" },
+    { "language": "Spanish", "fluency": "Intermediate (B1)" }
+  ],
+  "projects": [
+    {
+      "name": "ledger-replay",
+      "description": "Open-source tool to replay Kafka topics into a test ledger.",
+      "highlights": ["Used by three teams to reproduce production incidents"],
+      "keywords": ["Java", "Kafka"],
+      "startDate": "2022-01",
+      "url": "https://github.com/ana-example/ledger-replay",
+      "roles": ["Author", "Maintainer"]
+    }
+  ],
+  "x-extra": {
+    "nationality": ["Brazilian", "Portuguese"],
+    "dateOfBirth": "1991-08-20",
+    "availability": "Available from 2027-01-04",
+    "noticePeriod": "60 days",
+    "workAuthorization": ["European Union", "Brazil"],
+    "certifications": [
+      {
+        "name": "Certified Kubernetes Application Developer",
+        "issuer": "Cloud Native Computing Foundation",
+        "date": "2023-05-12",
+        "expires": "2026-05-12",
+        "credentialId": "ABC-123",
+        "url": "https://certs.example.com/ckad/ABC-123"
+      }
+    ],
+    "links": [
+      { "label": "Portfolio", "url": "https://ana.example.com/portfolio" },
+      { "label": "Stack Overflow", "url": "https://stackoverflow.com/users/0000000/ana-example" }
+    ]
+  }
+}

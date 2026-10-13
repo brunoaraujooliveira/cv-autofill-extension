@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 05 — repeatable sections</title>
+    <style>
+      label {
+        display: block;
+        margin: 8px 0 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Background</h1>
+    <form id="application">
+      <section id="work">
+        <h2>Work experience</h2>
+        <div class="blocks"></div>
+        <button type="button" class="add">Add experience</button>
+      </section>
+
+      <section id="education">
+        <h2>Education</h2>
+        <div class="blocks"></div>
+        <!-- Styled as a button without being one, as some portals do. -->
+        <div class="btn add">+ Add another</div>
+      </section>
+
+      <p><button type="submit">Submit application</button></p>
+    </form>
+    <pre id="result"></pre>
+
+    <script type="module">
+      const FIELDS = {
+        work: [
+          ['company', 'Company'],
+          ['title', 'Job title'],
+        ],
+        education: [['school', 'School']],
+      };
+      const HEADINGS = { work: 'Experience', education: 'Degree' };
+
+      function addBlock(section) {
+        const blocks = section.querySelector('.blocks');
+        const number = blocks.children.length + 1;
+        const block = document.createElement('fieldset');
+        block.innerHTML =
+          `<legend>${HEADINGS[section.id]} ${number}</legend>` +
+          FIELDS[section.id]
+            .map(
+              ([name, label]) => `<label>${label} <input name="${section.id}.${name}" /></label>`,
+            )
+            .join('');
+        blocks.append(block);
+      }
+
+      for (const section of document.querySelectorAll('section')) {
+        section.querySelector('.add').addEventListener('click', () => addBlock(section));
+      }
+      // Like most portals, the form starts with one empty experience and no education.
+      addBlock(document.querySelector('#work'));
+
+      const form = document.querySelector('#application');
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const all = (name) => data.getAll(name);
+        document.querySelector('#result').textContent = JSON.stringify({
+          companies: all('work.company'),
+          titles: all('work.title'),
+          schools: all('education.school'),
+        });
+      });
+    </script>
+  </body>
+</html>

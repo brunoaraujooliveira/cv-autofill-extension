@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 10 — list that only grows once the last block is filled</title>
+    <style>
+      .work-exp {
+        border-top: 1px solid #ccc;
+        padding: 8px 0;
+      }
+      .form-group {
+        margin: 6px 0;
+      }
+      .app-button {
+        display: inline-block;
+        padding: 6px 12px;
+        background: #28a;
+        color: #fff;
+        cursor: pointer;
+      }
+      button.app-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="application">
+      <section class="step">
+        <h2>Work experience</h2>
+        <div class="doc-main"></div>
+      </section>
+      <p><button type="submit">Submit application</button></p>
+    </form>
+    <pre id="result"></pre>
+
+    <script type="module">
+      /**
+       * Behaves like a real portal seen in the wild:
+       * - every block reuses the same element ids, and its labels point at ids that do not exist;
+       * - placeholders are examples, not names;
+       * - "Add" is a clickable <div> while the last block has data, and is replaced by a
+       *   disabled <button> while the last block is empty.
+       * Nothing is kept across reloads.
+       */
+      const main = document.querySelector('.doc-main');
+      const experiences = [{}];
+
+      const FIELDS = [
+        ['position', 'occupationOrPositionHeld', 'Job title', 'Title of the occupation'],
+        ['company', 'companyOrEmployName', 'Company', 'For example a company or institution'],
+      ];
+
+      function renderBlock(experience, index) {
+        const block = document.createElement('div');
+        block.className = index === 0 ? 'work-exp' : 'work-exp separator';
+        for (const [key, id, label, placeholder] of FIELDS) {
+          const group = document.createElement('div');
+          group.className = 'form-group';
+          group.innerHTML =
+            `<div class="label-wrapper"><label for="${key}Missing">${label}</label></div>` +
+            `<input id="${id}" name="${id}" type="text" placeholder="${placeholder}" />`;
+          const input = group.querySelector('input');
+          input.value = experience[key] ?? '';
+          input.addEventListener('input', () => {
+            experience[key] = input.value;
+            renderAddControl();
+          });
+          block.append(group);
+        }
+        if (index > 0) {
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'btn btn-danger';
+          remove.textContent = 'Delete';
+          remove.addEventListener('click', () => {
+            experiences.splice(index, 1);
+            render();
+          });
+          block.append(remove);
+        }
+        return block;
+      }
+
+      function renderAddControl() {
+        main.querySelector('.app-button')?.remove();
+        const lastIsEmpty = Object.keys(experiences.at(-1)).length === 0;
+        const control = document.createElement(lastIsEmpty ? 'button' : 'div');
+        control.className = 'app-button btn-prime';
+        control.textContent = 'Add another work experience';
+        if (lastIsEmpty) {
+          control.disabled = true;
+          control.type = 'button';
+        } else {
+          control.addEventListener('click', () => {
+            experiences.push({});
+            render();
+          });
+        }
+        main.append(control);
+      }
+
+      function render() {
+        main.replaceChildren(...experiences.map(renderBlock));
+        renderAddControl();
+      }
+
+      document.querySelector('#application').addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.querySelector('#result').textContent = JSON.stringify(experiences);
+      });
+      render();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 03 — four-step wizard</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 640px;
+        margin: 24px auto;
+      }
+      [role='tablist'] {
+        display: flex;
+        gap: 12px;
+        list-style: none;
+        padding: 0;
+      }
+      [role='tab'][aria-selected='true'] {
+        font-weight: bold;
+      }
+      label,
+      fieldset {
+        display: block;
+        margin: 12px 0 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Application</h1>
+    <ol role="tablist">
+      <li role="tab" aria-selected="true">Personal details</li>
+      <li role="tab" aria-selected="false">Contact</li>
+      <li role="tab" aria-selected="false">Questions</li>
+      <li role="tab" aria-selected="false">Review</li>
+    </ol>
+
+    <form id="wizard">
+      <div role="tabpanel">
+        <label>First name * <input name="firstName" required /></label>
+        <label>Last name * <input name="lastName" required /></label>
+        <label>Email * <input name="email" type="email" required /></label>
+      </div>
+
+      <div role="tabpanel" hidden>
+        <label>Phone <input name="phone" type="tel" /></label>
+        <label
+          >Country *
+          <select name="country" required>
+            <option value="">Select…</option>
+            <option value="BR">Brazil</option>
+            <option value="PT">Portugal</option>
+          </select>
+        </label>
+        <label>Salary expectation * <input name="salary" required /></label>
+      </div>
+
+      <div role="tabpanel" hidden>
+        <label>LinkedIn profile * <input name="linkedin" required /></label>
+        <label>Earliest start date <input name="startDate" type="date" /></label>
+        <fieldset>
+          <legend>Are you authorized to work in the EU? *</legend>
+          <label><input type="radio" name="euAuthorized" value="yes" required /> Yes</label>
+          <label><input type="radio" name="euAuthorized" value="no" /> No</label>
+        </fieldset>
+      </div>
+
+      <div role="tabpanel" hidden>
+        <p>Check your answers before sending.</p>
+        <pre id="summary"></pre>
+        <button type="submit">Submit application</button>
+      </div>
+
+      <p>
+        <button type="button" id="back">Back</button>
+        <button type="button" id="next" disabled>Next</button>
+      </p>
+    </form>
+    <pre id="result"></pre>
+
+    <script type="module">
+      const STORAGE_KEY = 'wizard';
+      const form = document.querySelector('#wizard');
+      const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      const next = document.querySelector('#next');
+      const back = document.querySelector('#back');
+      // Only completed steps survive a reload; the step in progress comes back empty.
+      const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '{"step":0,"data":{}}');
+      let step = saved.step;
+
+      const controlsOf = (panel) => [...panel.querySelectorAll('input, select')];
+      const valueOf = (name) => new FormData(form).get(name) ?? '';
+      const isComplete = (panel) =>
+        controlsOf(panel)
+          .filter((control) => control.required)
+          .every((control) => valueOf(control.name) !== '');
+
+      function render() {
+        panels.forEach((panel, index) => (panel.hidden = index !== step));
+        tabs.forEach((tab, index) => tab.setAttribute('aria-selected', String(index === step)));
+        const last = step === panels.length - 1;
+        next.hidden = last;
+        back.hidden = step === 0;
+        next.disabled = !isComplete(panels[step]);
+        if (last) document.querySelector('#summary').textContent = JSON.stringify(saved.data);
+      }
+
+      function persist() {
+        for (const control of controlsOf(panels[step])) {
+          saved.data[control.name] = valueOf(control.name);
+        }
+        saved.step = step;
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      }
+
+      for (const [index, panel] of panels.entries()) {
+        if (index >= step) continue;
+        for (const control of controlsOf(panel)) {
+          const stored = saved.data[control.name] ?? '';
+          if (control.type === 'radio') control.checked = control.value === stored;
+          else control.value = stored;
+        }
+      }
+
+      form.addEventListener('input', render);
+      form.addEventListener('change', render);
+      next.addEventListener('click', () => {
+        persist();
+        step += 1;
+        saved.step = step;
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+        render();
+      });
+      back.addEventListener('click', () => {
+        step -= 1;
+        render();
+      });
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.querySelector('#result').textContent = 'SUBMITTED';
+      });
+      render();
+    </script>
+  </body>
+</html>

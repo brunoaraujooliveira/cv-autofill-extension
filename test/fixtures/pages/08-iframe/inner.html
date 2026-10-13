@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Embedded form</title>
+  </head>
+  <body>
+    <form id="application">
+      <p>
+        <label>Email <input name="email" type="email" /></label>
+      </p>
+      <p>
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          <option value="">Select…</option>
+          <option value="BR">Brazil</option>
+          <option value="PT">Portugal</option>
+        </select>
+      </p>
+      <button type="submit">Submit application</button>
+    </form>
+    <pre id="result"></pre>
+    <script type="module">
+      const form = document.querySelector('#application');
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.querySelector('#result').textContent = 'SUBMITTED';
+      });
+    </script>
+  </body>
+</html>

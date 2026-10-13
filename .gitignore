@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-e2e
+test/fixtures/dist
+coverage
+playwright-report
+test-results
+.DS_Store
+*.local
+*.local.json
+*.local.md
+architecture_plan.json

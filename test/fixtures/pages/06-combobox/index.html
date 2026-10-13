@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 06 — custom combobox with search</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 640px;
+        margin: 24px auto;
+      }
+      .combo {
+        position: relative;
+        margin: 4px 0 16px;
+      }
+      [role='listbox'] {
+        position: absolute;
+        z-index: 1;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border: 1px solid #888;
+        background: #fff;
+        width: 240px;
+      }
+      [role='option'] {
+        padding: 4px 8px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Location</h1>
+    <form id="application">
+      <label id="country-label">Country *</label>
+      <div class="combo" data-name="country" data-min-chars="0"></div>
+
+      <label id="city-label">City</label>
+      <div class="combo" data-name="city" data-min-chars="2"></div>
+
+      <p><button type="submit">Submit application</button></p>
+    </form>
+    <pre id="result"></pre>
+
+    <script type="module">
+      const OPTIONS = {
+        country: ['Brazil', 'Portugal', 'Spain', 'United Kingdom'],
+        city: ['Lisbon', 'Lisburn', 'Porto', 'Madrid', 'São Paulo'],
+      };
+      const selected = { country: '', city: '' };
+
+      /**
+       * ARIA combobox whose popup only exists while open. "country" lists everything on click;
+       * "city" behaves like a remote search: nothing until two characters are typed, then a delay.
+       */
+      function mount(container) {
+        const name = container.dataset.name;
+        const minChars = Number(container.dataset.minChars);
+        const input = document.createElement('input');
+        input.setAttribute('role', 'combobox');
+        input.setAttribute('aria-labelledby', `${name}-label`);
+        input.setAttribute('aria-expanded', 'false');
+        input.setAttribute('aria-controls', `${name}-list`);
+        input.setAttribute('aria-autocomplete', 'list');
+        input.placeholder = minChars > 0 ? 'Type to search' : 'Select…';
+        container.append(input);
+
+        const close = () => {
+          container.querySelector('[role="listbox"]')?.remove();
+          input.setAttribute('aria-expanded', 'false');
+        };
+
+        const open = () => {
+          close();
+          const query = input.value.trim().toLowerCase();
+          if (query.length < minChars) return;
+          const list = document.createElement('ul');
+          list.id = `${name}-list`;
+          list.setAttribute('role', 'listbox');
+          for (const text of OPTIONS[name].filter((o) => o.toLowerCase().includes(query))) {
+            const option = document.createElement('li');
+            option.setAttribute('role', 'option');
+            option.textContent = text;
+            option.addEventListener('mousedown', (event) => event.preventDefault());
+            option.addEventListener('click', () => {
+              selected[name] = text;
+              input.value = text;
+              close();
+            });
+            list.append(option);
+          }
+          container.append(list);
+          input.setAttribute('aria-expanded', 'true');
+        };
+
+        input.addEventListener('mousedown', open);
+        input.addEventListener('input', () => {
+          selected[name] = '';
+          if (minChars > 0) setTimeout(open, 30);
+          else open();
+        });
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') close();
+          if (event.key === 'ArrowDown') open();
+        });
+      }
+
+      document.querySelectorAll('.combo').forEach(mount);
+      document.querySelector('#application').addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.querySelector('#result').textContent = JSON.stringify(selected);
+      });
+    </script>
+  </body>
+</html>

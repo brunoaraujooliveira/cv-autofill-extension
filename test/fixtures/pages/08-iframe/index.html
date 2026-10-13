@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 08 — form inside a cross-origin iframe</title>
+  </head>
+  <body>
+    <h1>Apply</h1>
+    <p>
+      <label>First name <input name="firstName" /></label>
+    </p>
+    <!-- Same server, different host name: a different origin as far as the browser cares. -->
+    <iframe id="embedded" title="Application form" width="600" height="260"></iframe>
+    <script type="module">
+      const inner = new URL('./inner.html', location.href);
+      inner.hostname = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+      document.querySelector('#embedded').src = inner.href;
+    </script>
+  </body>
+</html>

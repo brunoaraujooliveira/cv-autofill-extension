@@ -1,0 +1,27 @@
+.options {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plain-list > li {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.plain-list > li.actions {
+  justify-content: space-between;
+}
+
+.options__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 09 — validation errors</title>
+    <style>
+      .field {
+        margin: 12px 0;
+      }
+      .error {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Personal data</h1>
+    <form id="application" novalidate>
+      <div class="field">
+        <label for="birth">Date of birth</label>
+        <input id="birth" name="birth" aria-describedby="birth-error" />
+        <span id="birth-error" class="error" role="alert"></span>
+      </div>
+
+      <div class="field">
+        <label for="postal">Postal code</label>
+        <input id="postal" name="postal" />
+        <div class="error" hidden>This postal code is not served yet</div>
+      </div>
+
+      <div class="field">
+        <label for="cv">Resume / CV</label>
+        <input id="cv" name="cv" type="file" />
+      </div>
+
+      <button type="submit">Submit application</button>
+    </form>
+
+    <script type="module">
+      const birth = document.querySelector('#birth');
+      const birthError = document.querySelector('#birth-error');
+      // Validates when the field loses focus, like most portals do.
+      birth.addEventListener('blur', () => {
+        const valid = birth.value === '' || /^\d{2}\/\d{2}\/\d{4}$/.test(birth.value);
+        birth.setAttribute('aria-invalid', String(!valid));
+        birthError.textContent = valid ? '' : 'Use the format DD/MM/YYYY';
+      });
+
+      // No value is ever accepted here: the extension has to give up and ask the user.
+      const postal = document.querySelector('#postal');
+      postal.addEventListener('blur', () => {
+        postal.nextElementSibling.hidden = postal.value === '';
+      });
+
+      document.querySelector('#application').addEventListener('submit', (event) => {
+        event.preventDefault();
+      });
+    </script>
+  </body>
+</html>

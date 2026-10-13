@@ -1,0 +1,11 @@
+dist
+dist-e2e
+test/fixtures/dist
+coverage
+node_modules
+package-lock.json
+playwright-report
+test-results
+*.local.md
+*.local.json
+architecture_plan.json

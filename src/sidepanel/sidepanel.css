@@ -1,0 +1,146 @@
+.sidepanel {
+  padding: 16px;
+}
+
+.setup {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.card .actions {
+  margin-top: 12px;
+}
+
+.detail {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.field-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.field-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.field-row--filled {
+  border-left-color: var(--ok);
+}
+
+.field-row--ask_user,
+.field-row--failed,
+.field-row--pending_manual {
+  border-left-color: var(--error);
+}
+
+.field-row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.field-row__label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.field-row__required {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.field-row__value {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.field-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.field-row__error {
+  margin: 4px 0 0;
+  color: var(--error);
+  font-size: 0.85rem;
+}
+
+.badge {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.badge--review {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.step-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.status--warning {
+  color: var(--warning);
+  margin-top: 8px;
+}
+
+.job-description {
+  margin-top: 12px;
+}
+
+.job-description textarea {
+  min-height: 0;
+  font-family: inherit;
+}
+
+.answer-form {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+
+.answer-form textarea {
+  min-height: 0;
+  font-family: inherit;
+}
+
+.answer-form input[type='checkbox'] {
+  margin-top: 8px;
+}
+
+.diagnostics {
+  margin: 12px 0 0;
+}
+
+button.link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}

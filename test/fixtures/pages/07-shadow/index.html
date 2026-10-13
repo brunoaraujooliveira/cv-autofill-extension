@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture 07 — open shadow DOM</title>
+  </head>
+  <body>
+    <h1>Profile</h1>
+    <profile-form></profile-form>
+    <pre id="result"></pre>
+
+    <script type="module">
+      /** A labelled input living in its own shadow root, nested inside the form's shadow root. */
+      class LabelledInput extends HTMLElement {
+        connectedCallback() {
+          const name = this.getAttribute('name');
+          this.attachShadow({ mode: 'open' }).innerHTML =
+            `<label for="control">${this.getAttribute('label')}</label> ` +
+            `<input id="control" name="${name}" type="${this.getAttribute('type') ?? 'text'}" />`;
+        }
+        get value() {
+          return this.shadowRoot.querySelector('input').value;
+        }
+      }
+      customElements.define('labelled-input', LabelledInput);
+
+      class ProfileForm extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: 'open' });
+          root.innerHTML = `
+            <form>
+              <labelled-input name="firstName" label="First name"></labelled-input>
+              <labelled-input name="email" label="Email" type="email"></labelled-input>
+              <p>
+                <label for="country">Country</label>
+                <select id="country">
+                  <option value="">Select…</option>
+                  <option value="BR">Brazil</option>
+                  <option value="PT">Portugal</option>
+                </select>
+              </p>
+              <button type="submit">Submit application</button>
+            </form>`;
+          root.querySelector('form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const inputs = [...root.querySelectorAll('labelled-input')];
+            document.querySelector('#result').textContent = JSON.stringify({
+              ...Object.fromEntries(
+                inputs.map((input) => [input.getAttribute('name'), input.value]),
+              ),
+              country: root.querySelector('#country').value,
+            });
+          });
+        }
+      }
+      customElements.define('profile-form', ProfileForm);
+    </script>
+  </body>
+</html>
