@@ -31,10 +31,25 @@ export function textWithoutControls(node: Node): string {
   return collapseWhitespace(clone.textContent);
 }
 
+/**
+ * "Required" written into the label, usually as screen-reader-only text beside the asterisk.
+ * It marks the field as required and is not part of what is asked.
+ */
+const REQUIRED_WORD =
+  '(?:required|mandatory|obrigat[oó]ri[oa]|requerid[oa]|obligatori[oa]|obligatoire|requis|pflichtfeld|erforderlich|obbligatori[oa])';
+// At the start only when punctuation closes it, so "Required skills" stays a question.
+const LEADING_REQUIRED = new RegExp(`^\\(?${REQUIRED_WORD}\\)?[.:]\\s*`, 'i');
+const TRAILING_REQUIRED = new RegExp(`\\s*\\(?${REQUIRED_WORD}\\)?[.:]?$`, 'i');
+
 function toLabel(raw: string, source: LabelSource, element?: Element): ResolvedLabel | null {
-  const text = collapseWhitespace(raw.replace(/\*/g, ' ')).replace(/\s*:$/, '');
+  const spaced = collapseWhitespace(raw.replace(/\*/g, ' '));
+  const text = spaced
+    .replace(LEADING_REQUIRED, '')
+    .replace(TRAILING_REQUIRED, '')
+    .replace(/\s*:$/, '');
   if (text === '') return null;
-  return { text, source, hasRequiredMark: raw.includes('*'), ...(element ? { element } : {}) };
+  const hasRequiredMark = raw.includes('*') || text !== spaced.replace(/\s*:$/, '');
+  return { text, source, hasRequiredMark, ...(element ? { element } : {}) };
 }
 
 function fromLabelFor(control: Element): ResolvedLabel | null {

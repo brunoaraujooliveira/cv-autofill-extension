@@ -119,6 +119,21 @@ describe('resolveLabel', () => {
     expect(labelOf('#name')).toMatchObject({ text: 'Full name', hasRequiredMark: true });
   });
 
+  it('drops a "Required" written into the label for screen readers, keeping it as a mark', () => {
+    render(`
+      <label for="a">Email<sup aria-hidden="true">*</sup><span class="sr-only">Required</span></label><input id="a" />
+      <label for="b"><span class="sr-only">Required.</span>By submitting this application, I agree</label><input id="b" type="checkbox" />
+      <label for="c">Telefone (obrigatório)</label><input id="c" />
+      <label for="d">Required skills</label><input id="d" />`);
+    expect(labelOf('#a')).toMatchObject({ text: 'Email', hasRequiredMark: true });
+    expect(labelOf('#b')).toMatchObject({
+      text: 'By submitting this application, I agree',
+      hasRequiredMark: true,
+    });
+    expect(labelOf('#c')).toMatchObject({ text: 'Telefone', hasRequiredMark: true });
+    expect(labelOf('#d')).toMatchObject({ text: 'Required skills', hasRequiredMark: false });
+  });
+
   it('skips empty sources', () => {
     render('<label for="a">  </label><input id="a" aria-label="" placeholder="Real one" />');
     expect(labelOf('#a')).toMatchObject({ text: 'Real one', source: 'placeholder' });
